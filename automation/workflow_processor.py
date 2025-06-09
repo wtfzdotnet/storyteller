@@ -6,9 +6,14 @@ from typing import List, Dict, Optional, Any
 from dotenv import load_dotenv
 
 # Assuming ai_core is in PYTHONPATH or this script is run as a module
-from ai_core.github_handler import GitHubService
-from ai_core.llm_handler import LLMService
-from ai_core.story_manager import StoryOrchestrator # For interaction with AI logic
+import sys
+import os
+# Add parent directory to path for imports
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from github_handler import GitHubService
+from llm_handler import LLMService
+from story_manager import StoryOrchestrator # For interaction with AI logic
 
 # Basic Logging Configuration will be set up in main()
 logger = logging.getLogger(__name__)
@@ -48,7 +53,7 @@ WORKFLOW_STATES = {
     },
     'story/consensus': { 
         'next_states': ['story/ready'],
-        'auto_actions': [], 
+        'auto_actions': ['create_repository_tickets'], 
     },
     'story/blocked': {
         'next_states': ['story/draft', 'story/enriching', 'story/archived', 'story/split'], 
@@ -204,6 +209,82 @@ def get_score_from_consensus_label(consensus_label: Optional[str]) -> int:
         logger.warning(f"Could not parse score from consensus label: {consensus_label}")
         return 0
 
+async def _create_repository_tickets_for_consensus(issue_number: int, github_service: GitHubService, 
+                                                 llm_service: LLMService, story_orchestrator: StoryOrchestrator, 
+                                                 current_labels: List[str]) -> None:
+    """
+    Create tickets in designated repositories when consensus is reached.
+    This removes confusing details and customizes content for each repository type.
+    """
+    # Check if multi-repository mode is enabled
+    if not story_orchestrator.config.is_multi_repository_mode():
+        logger.info(f"[{issue_number}] Multi-repository mode not enabled, skipping repository ticket creation")
+        return
+    
+    # Get the current story details
+    try:
+        story_details = story_orchestrator.get_story_details(issue_number)
+        if not story_details:
+            logger.error(f"[{issue_number}] Could not retrieve story details for ticket creation")
+            return
+        
+        github_issue = github_service.get_issue(issue_number)
+        if not github_issue:
+            logger.error(f"[{issue_number}] Could not retrieve GitHub issue for ticket creation")
+            return
+            
+        logger.info(f"[{issue_number}] Creating repository tickets for consensus story: {story_details.title}")
+        
+        # Create the base prompt from the finalized story
+        base_prompt = f"{story_details.title}\n\n{story_details.body}"
+        
+        # Get default roles for repository ticket creation
+        roles_to_consult = DEFAULT_ROLES_FOR_FEEDBACK
+        
+        # Create stories across all configured repositories
+        created_stories = await story_orchestrator.create_multi_repository_stories(
+            base_prompt, 
+            roles_to_consult,
+            target_repositories=None  # Create in all repositories
+        )
+        
+        # Add a comment to the original issue linking to the created tickets
+        if created_stories:
+            ticket_links = []
+            for repo_key, story in created_stories.items():
+                if story and story.id:
+                    repo_config = story_orchestrator.config.multi_repository_config.get_repository(repo_key)
+                    repo_name = repo_config.name if repo_config else repo_key
+                    ticket_links.append(f"- **{repo_key}** ({repo_name}): #{story.id}")
+            
+            if ticket_links:
+                comment_body = (
+                    "🎯 **Consensus Reached - Repository Tickets Created**\n\n"
+                    "Following consensus on this story, tickets have been automatically created "
+                    "in the designated repositories with repository-specific focus:\n\n"
+                    + "\n".join(ticket_links) +
+                    "\n\nEach ticket has been customized for its target repository:\n"
+                    "- **Backend tickets** focus on API design, data models, and business logic\n"
+                    "- **Frontend tickets** focus on UI/UX, user interactions, and API consumption"
+                )
+                
+                await github_service.add_comment_to_issue(issue_number, comment_body)
+                logger.info(f"[{issue_number}] Added comment linking to {len(ticket_links)} created repository tickets")
+            else:
+                logger.warning(f"[{issue_number}] No valid tickets were created despite success response")
+        else:
+            logger.warning(f"[{issue_number}] No repository tickets were created")
+            
+    except Exception as e:
+        logger.error(f"[{issue_number}] Error in repository ticket creation: {e}", exc_info=True)
+        # Add error comment to the original issue
+        await github_service.add_comment_to_issue(
+            issue_number,
+            "⚠️ **Repository Ticket Creation Failed**\n\n"
+            f"An error occurred while creating repository tickets: {str(e)}\n\n"
+            "Please check the logs and consider creating tickets manually."
+        )
+
 async def execute_auto_actions(issue_number: int, state_label: str, auto_actions: List[str], 
                                github_service: GitHubService, llm_service: LLMService, 
                                story_orchestrator: StoryOrchestrator, current_labels: List[str]) -> List[str]:
@@ -295,6 +376,16 @@ async def execute_auto_actions(issue_number: int, state_label: str, auto_actions
                     "📢 **Stakeholder Notification**\n\n"
                     "Stakeholders have been notified of the current story status and any required actions."
                 )
+                
+            elif action == 'create_repository_tickets':
+                logger.info(f"[{issue_number}] Executing: create_repository_tickets")
+                try:
+                    await _create_repository_tickets_for_consensus(
+                        issue_number, github_service, llm_service, story_orchestrator, updated_labels
+                    )
+                    logger.info(f"[{issue_number}] Successfully created repository tickets")
+                except Exception as e:
+                    logger.error(f"[{issue_number}] Error creating repository tickets: {e}", exc_info=True)
                 
             elif action in ['perform_archival_cleanup', 'perform_split_cleanup']:
                 logger.info(f"[{issue_number}] Executing: {action} (conceptual)")

@@ -67,9 +67,9 @@ class StoryOrchestrator:
 
         # Add requested role documentation files
         for role in roles_to_consult:
-            # Convert role names like "System Architect" to file paths like "docs/ai/roles/system-architect.md"
+            # Convert role names like "System Architect" to file paths like ".storyteller/roles/system-architect.md"
             role_name = "-".join(word.lower() for word in role.split())
-            role_path = f"docs/ai/roles/{role_name}.md"
+            role_path = f".storyteller/roles/{role_name}.md"
             role_paths.append(role_path)
 
         return role_paths
@@ -460,7 +460,7 @@ class StoryOrchestrator:
                 # Get repository context for file discovery
                 role_docs = ["AI.md"]
                 if repo_key:
-                    role_docs.append(f"docs/ai/roles/{repo_key}-specific.md")
+                    role_docs.append(f".storyteller/roles/{repo_key}-specific.md")
 
                 file_suggestions = await self.llm_service.query_llm(
                     discovery_prompt, repository_references=role_docs
@@ -1011,7 +1011,7 @@ Focus on technical implementation details and provide clear guidance for the dev
             # If using GitHub Models with repository-based prompts
             if self.use_repository_prompts:
                 # Get role documentation for a lead facilitator role
-                role_docs = ["AI.md", "docs/ai/roles/ProductOwner.md"]
+                role_docs = ["AI.md", ".storyteller/roles/ProductOwner.md"]
                 logger.info(
                     f"Using repository-based prompt for feedback summary with docs: {role_docs}"
                 )

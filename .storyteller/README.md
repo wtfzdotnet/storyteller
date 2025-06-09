@@ -103,21 +103,21 @@ Our AI-powered development process leverages a comprehensive team of expert role
 
 ### <� Technical Leadership Roles
 
-#### [System Architect](docs/ai/roles/system-architect.md)
+#### [System Architect](.storyteller/roles/system-architect.md)
 **Focus**: DDD/Hexagonal architecture, bounded contexts, event-driven design
 - Defines overall system architecture following DDD principles
 - Establishes bounded contexts for recipe management domains
 - Designs CQRS implementation and messaging patterns
 - Plans microservice-ready architecture for future scaling
 
-#### [Lead Developer](docs/ai/roles/lead-developer.md)
+#### [Lead Developer](.storyteller/roles/lead-developer.md)
 **Focus**: Symfony implementation, API Platform, Doctrine patterns
 - Implements DDD patterns with Symfony framework integration
 - Designs API Platform resources and state processors
 - Establishes Doctrine XML mappings and repositories
 - Implements progressive bounded context architecture
 
-#### [Security Expert](docs/ai/roles/security-expert.md)
+#### [Security Expert](.storyteller/roles/security-expert.md)
 **Focus**: Authentication, data privacy, API security, content moderation
 - Designs multi-tenant authentication for recipe platform
 - Establishes GDPR/CCPA compliance for dietary data
@@ -126,14 +126,14 @@ Our AI-powered development process leverages a comprehensive team of expert role
 
 ### =� Product & Strategy Roles
 
-#### [Product Owner](docs/ai/roles/product-owner.md)
+#### [Product Owner](.storyteller/roles/product-owner.md)
 **Focus**: User stories, roadmap, monetization, cultural exchange features
 - Defines multi-stage product roadmap (Authority � Planning � Inventory � Shopping � Cultural)
 - Establishes user acquisition through recipe authority and SEO
 - Plans monetization through affiliate partnerships and premium features
 - Designs cultural exchange network and heritage recipe features
 
-#### [UX/UI Designer](docs/ai/roles/ux-ui-designer.md)
+#### [UX/UI Designer](.storyteller/roles/ux-ui-designer.md)
 **Focus**: User experience, cultural sensitivity, accessibility
 - Designs intuitive recipe browsing and meal planning interfaces
 - Creates culturally-aware user experiences for global audiences
@@ -142,21 +142,21 @@ Our AI-powered development process leverages a comprehensive team of expert role
 
 ### >X Domain Expert Roles
 
-#### [Domain Expert - Food & Nutrition](docs/ai/roles/domain-expert-food-nutrition.md)
+#### [Domain Expert - Food & Nutrition](.storyteller/roles/domain-expert-food-nutrition.md)
 **Focus**: Ingredient science, nutrition accuracy, substitution algorithms
 - Provides deep knowledge of food science and nutrition
 - Validates ingredient standardization and substitution logic
 - Ensures nutritional calculation accuracy across recipe variations
 - Guides allergen management and dietary restriction features
 
-#### [Professional Chef](docs/ai/roles/professional-chef.md)
+#### [Professional Chef](.storyteller/roles/professional-chef.md)
 **Focus**: Culinary techniques, recipe quality, professional standards
 - Provides expertise on advanced cooking techniques and flavor development
 - Validates recipe quality and authenticity for professional standards
 - Guides ingredient sourcing, seasonality, and quality assessment
 - Ensures recipe instruction clarity and technique accuracy
 
-#### [Food Historian/Anthropologist](docs/ai/roles/food-historian-anthropologist.md)
+#### [Food Historian/Anthropologist](.storyteller/roles/food-historian-anthropologist.md)
 **Focus**: Cultural context, recipe origins, heritage preservation
 - Provides deep contextual understanding across cultures and history
 - Researches and verifies origins and evolution of traditional dishes
@@ -165,35 +165,35 @@ Our AI-powered development process leverages a comprehensive team of expert role
 
 ### <� Specialized Nutrition Roles
 
-#### [Registered Dietitian](docs/ai/roles/registered-dietitian.md)
+#### [Registered Dietitian](.storyteller/roles/registered-dietitian.md)
 **Focus**: Clinical nutrition, therapeutic diets, medical compliance
 - Provides evidence-based medical nutrition therapy guidance
 - Develops specialized dietary plans for health conditions
 - Ensures food-drug interaction awareness and clinical safety
 - Validates therapeutic diet implementations
 
-#### [Geriatric Nutritionist](docs/ai/roles/geriatric-nutritionist.md)
+#### [Geriatric Nutritionist](.storyteller/roles/geriatric-nutritionist.md)
 **Focus**: Elderly nutrition needs, texture modifications, medication interactions
 - Specializes in nutrition for aging populations
 - Addresses texture modifications and swallowing considerations
 - Manages medication-food interactions for elderly users
 - Ensures accessibility for age-related dietary needs
 
-#### [Pediatric Nutritionist](docs/ai/roles/pediatric-nutritionist.md)
+#### [Pediatric Nutritionist](.storyteller/roles/pediatric-nutritionist.md)
 **Focus**: Child nutrition, family meal planning, developmental needs
 - Provides expertise on nutrition for infants, children, and adolescents
 - Guides family-friendly meal planning and portion sizing
 - Addresses picky eating and developmental nutrition needs
 - Ensures child safety in recipe recommendations
 
-#### [Pregnancy & Lactation Nutritionist](docs/ai/roles/pregnancy-lactation-nutritionist.md)
+#### [Pregnancy & Lactation Nutritionist](.storyteller/roles/pregnancy-lactation-nutritionist.md)
 **Focus**: Prenatal/postnatal nutrition, food safety, breastfeeding support
 - Specializes in nutrition during pregnancy and breastfeeding
 - Addresses food safety concerns and nutrient requirements
 - Guides meal planning for changing nutritional needs
 - Ensures safety recommendations for pregnant and nursing mothers
 
-#### [Sports Nutritionist](docs/ai/roles/sports-nutritionist.md)
+#### [Sports Nutritionist](.storyteller/roles/sports-nutritionist.md)
 **Focus**: Athletic performance, meal timing, recovery nutrition
 - Provides expertise on nutrition for athletic performance
 - Guides meal timing around training and competition
@@ -203,21 +203,21 @@ Our AI-powered development process leverages a comprehensive team of expert role
 ### <
  Specialized Domain Roles
 
-#### [Food Safety Specialist](docs/ai/roles/food-safety-specialist.md)
+#### [Food Safety Specialist](.storyteller/roles/food-safety-specialist.md)
 **Focus**: Food handling, storage, contamination prevention
 - Ensures food safety protocols in recipe instructions
 - Validates storage recommendations and expiration guidelines
 - Addresses contamination prevention and allergen management
 - Provides guidance on safe food handling practices
 
-#### [Sustainable Food Systems Expert](docs/ai/roles/sustainable-food-systems-expert.md)
+#### [Sustainable Food Systems Expert](.storyteller/roles/sustainable-food-systems-expert.md)
 **Focus**: Environmental impact, local sourcing, waste reduction
 - Guides environmentally sustainable recipe recommendations
 - Promotes local and seasonal ingredient sourcing
 - Addresses food waste reduction and leftover optimization
 - Ensures sustainability considerations in meal planning
 
-#### [Budget Cooking & Meal Prep Expert](docs/ai/roles/budget-cooking-meal-prep-expert.md)
+#### [Budget Cooking & Meal Prep Expert](.storyteller/roles/budget-cooking-meal-prep-expert.md)
 **Focus**: Cost-effective cooking, bulk preparation, economic efficiency
 - Provides expertise on budget-friendly meal planning
 - Guides bulk cooking and meal preparation strategies
@@ -226,28 +226,28 @@ Our AI-powered development process leverages a comprehensive team of expert role
 
 ### =' Technical Specialist Roles
 
-#### [AI Expert](docs/ai/roles/ai-expert.md)
+#### [AI Expert](.storyteller/roles/ai-expert.md)
 **Focus**: Machine learning, recommendation systems, automated processing
 - Designs intelligent recipe recommendation algorithms
 - Implements automated recipe parsing and standardization
 - Develops personalization and cultural recommendation systems
 - Guides AI-driven features for enhanced user experience
 
-#### [Linked Web Expert - Ontologies/RDF/Semantic Web](docs/ai/roles/linked-web-expert-ontologies-rdf-semantic-web.md)
+#### [Linked Web Expert - Ontologies/RDF/Semantic Web](.storyteller/roles/linked-web-expert-ontologies-rdf-semantic-web.md)
 **Focus**: Knowledge graphs, semantic relationships, structured data
 - Designs semantic models for recipe and ingredient relationships
 - Implements knowledge graphs for cultural and nutritional connections
 - Ensures structured data for enhanced discoverability
 - Guides ontology development for recipe domain modeling
 
-#### [DevOps Engineer](docs/ai/roles/devops-engineer.md)
+#### [DevOps Engineer](.storyteller/roles/devops-engineer.md)
 **Focus**: Infrastructure, deployment, monitoring, scalability
 - Manages Docker containerization and orchestration
 - Implements CI/CD pipelines for automated testing and deployment
 - Ensures scalability and performance monitoring
 - Guides infrastructure decisions for global recipe platform
 
-#### [QA Engineer](docs/ai/roles/qa-engineer.md)
+#### [QA Engineer](.storyteller/roles/qa-engineer.md)
 **Focus**: Testing strategies, quality assurance, user acceptance
 - Develops comprehensive testing strategies for recipe features
 - Ensures quality assurance across cultural and dietary variations
@@ -256,21 +256,21 @@ Our AI-powered development process leverages a comprehensive team of expert role
 
 ### <� Perspective Roles
 
-#### [Optimistic Developer/Innovation Advocate](docs/ai/roles/optimistic-developer-innovation-advocate.md)
+#### [Optimistic Developer/Innovation Advocate](.storyteller/roles/optimistic-developer-innovation-advocate.md)
 **Focus**: Innovation opportunities, positive possibilities, feature expansion
 - Champions innovative features and technological possibilities
 - Advocates for cutting-edge solutions and user experience enhancements
 - Identifies opportunities for platform expansion and growth
 - Promotes ambitious technical and product goals
 
-#### [Pessimistic Developer/Risk Analyst](docs/ai/roles/pessimistic-developer-risk-analyst.md)
+#### [Pessimistic Developer/Risk Analyst](.storyteller/roles/pessimistic-developer-risk-analyst.md)
 **Focus**: Risk assessment, technical constraints, realistic planning
 - Identifies potential technical risks and implementation challenges
 - Provides realistic timeline and complexity assessments
 - Ensures consideration of edge cases and failure scenarios
 - Advocates for robust error handling and fallback strategies
 
-#### [Documentation Hoarder](docs/ai/roles/documentation-hoarder.md)
+#### [Documentation Hoarder](.storyteller/roles/documentation-hoarder.md)
 **Focus**: Change tracking, comprehensive documentation, multi-perspective documentation
 - Obsessively documents every code change and decision rationale
 - Maintains documentation from AI, developer, and end-user perspectives

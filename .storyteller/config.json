@@ -8,7 +8,7 @@
       "story_labels": ["backend", "api"]
     },
     "frontend": {
-      "name": "project/frontend", 
+      "name": "wtfzdotnet/recipes-frontend", 
       "type": "frontend",
       "description": "User interface and client applications",
       "dependencies": ["backend"],

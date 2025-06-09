@@ -7,6 +7,7 @@ import sys
 import os
 from pathlib import Path
 
+
 def test_python_version():
     """Test Python version compatibility"""
     if sys.version_info < (3, 8):
@@ -15,28 +16,37 @@ def test_python_version():
     print(f"✅ Python {sys.version.split()[0]} is compatible")
     return True
 
+
 def test_virtual_environment():
     """Test if virtual environment is active"""
-    if hasattr(sys, 'real_prefix') or (hasattr(sys, 'base_prefix') and sys.base_prefix != sys.prefix):
+    if hasattr(sys, "real_prefix") or (
+        hasattr(sys, "base_prefix") and sys.base_prefix != sys.prefix
+    ):
         print("✅ Virtual environment is active")
         return True
     else:
         print("⚠️  Virtual environment not detected (optional)")
         return True
 
+
 def test_dependencies():
     """Test if required dependencies are installed"""
     required_packages = [
-        'openai', 'ollama', 'aiohttp', 'typer', 
-        'pydantic', 'dotenv', 'github'
+        "openai",
+        "ollama",
+        "aiohttp",
+        "typer",
+        "pydantic",
+        "dotenv",
+        "github",
     ]
-    
+
     missing = []
     for package in required_packages:
         try:
-            if package == 'dotenv':
+            if package == "dotenv":
                 import python_dotenv
-            elif package == 'github':
+            elif package == "github":
                 import github
             else:
                 __import__(package)
@@ -44,17 +54,23 @@ def test_dependencies():
         except ImportError:
             print(f"❌ {package} is missing")
             missing.append(package)
-    
+
     return len(missing) == 0
+
 
 def test_project_structure():
     """Test if project files exist"""
     required_files = [
-        'main.py', 'llm_handler.py', 'github_handler.py', 
-        'story_manager.py', 'config.py', 'requirements.txt',
-        '.env.example', '.storyteller/config.json'
+        "main.py",
+        "llm_handler.py",
+        "github_handler.py",
+        "story_manager.py",
+        "config.py",
+        "requirements.txt",
+        ".env.example",
+        ".storyteller/config.json",
     ]
-    
+
     missing = []
     for file in required_files:
         if Path(file).exists():
@@ -62,12 +78,13 @@ def test_project_structure():
         else:
             print(f"❌ {file} is missing")
             missing.append(file)
-    
+
     return len(missing) == 0
+
 
 def test_env_file():
     """Test if .env file exists"""
-    if Path('.env').exists():
+    if Path(".env").exists():
         print("✅ .env file exists")
         print("⚠️  Remember to configure your API keys in .env")
         return True
@@ -75,28 +92,29 @@ def test_env_file():
         print("⚠️  .env file not found - create it from .env.example")
         return False
 
+
 def main():
     """Run all tests"""
     print("🧪 Testing AI Story Management System Setup")
     print("=" * 50)
-    
+
     tests = [
         test_python_version,
         test_virtual_environment,
         test_dependencies,
         test_project_structure,
-        test_env_file
+        test_env_file,
     ]
-    
+
     results = []
     for test in tests:
         print()
         results.append(test())
-    
+
     print("\n" + "=" * 50)
     passed = sum(results)
     total = len(results)
-    
+
     if passed == total:
         print(f"🎉 All {total} tests passed! Setup is complete.")
         print("\n📋 Next steps:")
@@ -105,8 +123,9 @@ def main():
         print("3. Test with: python main.py story config")
     else:
         print(f"⚠️  {passed}/{total} tests passed. Please address the issues above.")
-    
+
     return passed == total
+
 
 if __name__ == "__main__":
     success = main()

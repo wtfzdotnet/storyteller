@@ -332,12 +332,13 @@ async def _create_repository_tickets_for_consensus(
             )
             return
 
-        github_issue = github_service.get_issue(issue_number)
-        if not github_issue:
+        github_issue_result = await github_service.get_issue(issue_number)
+        if not github_issue_result.success:
             logger.error(
-                f"[{issue_number}] Could not retrieve GitHub issue for ticket creation"
+                f"[{issue_number}] Could not retrieve GitHub issue for ticket creation: {github_issue_result.error}"
             )
             return
+        github_issue = github_issue_result.data
 
         logger.info(
             f"[{issue_number}] Creating repository tickets for consensus story: {story_details.title}"
@@ -742,9 +743,11 @@ async def process_story_state(
     if trigger_event == "issues" and action == "opened":
         if not current_story_label:  # Only if no story label exists
             logger.info(f"[{issue_number}] New issue. Initializing to 'story/draft'.")
-            issue_details = get_issue(issue_number)
-            if not issue_details:
-                logger.error(f"[{issue_number}] Cannot fetch issue details. Aborting.")
+            issue_result = await github_service.get_issue(issue_number)
+            if not issue_result.success:
+                logger.error(
+                    f"[{issue_number}] Cannot fetch issue details: {issue_result.error}. Aborting."
+                )
                 return
             new_state = "story/draft"
             current_labels = await _transition_to_state(
@@ -765,8 +768,8 @@ async def process_story_state(
             labels_to_add.append("auto/enabled")
             content_labels = await assign_labels_based_on_content(
                 issue_number,
-                issue_details.title,
-                issue_details.body or "",
+                issue_result.data.title,
+                issue_result.data.body or "",
                 github_service,
                 llm_service,
             )

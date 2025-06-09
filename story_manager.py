@@ -4,8 +4,18 @@ from typing import Any, Dict, List, Optional
 from pydantic import BaseModel, Field
 
 from config import Config, get_config
-from github_handler import GitHubService
+from github_handler import (
+    GitHubService,
+)
 from github_handler import Issue as GitHubIssue  # Renamed to avoid clash
+from github_handler import (
+    add_comment_to_issue,
+    add_label_to_issue,
+    create_issue,
+    get_issue,
+    remove_label_from_issue,
+    update_issue,
+)
 from llm_handler import LLMService
 
 logger = logging.getLogger(__name__)
@@ -250,7 +260,7 @@ class StoryOrchestrator:
             labels = ["user_story", "ai_generated"] + role_labels
 
             logger.info(f"Creating GitHub issue with Title: '{story_title}'")
-            created_issue = self.github_service.create_issue(
+            created_issue = create_issue(
                 title=story_title, body=story_body, labels=labels
             )
 
@@ -267,7 +277,7 @@ class StoryOrchestrator:
                     f"Successfully created story #{user_story.id} - '{user_story.title}'"
                 )
                 # Add a comment indicating it was AI generated and what roles are expected for feedback
-                self.github_service.add_comment_to_issue(
+                add_comment_to_issue(
                     created_issue.number,
                     f"This user story was automatically generated based on the prompt: '{initial_prompt}'.\n\n"
                     f"Awaiting feedback from the following roles: {', '.join(roles_to_consult)}.",
@@ -897,7 +907,7 @@ Focus on technical implementation details and provide clear guidance for the dev
             f"Gathering feedback for story #{story_id} from roles: {roles_providing_feedback}"
         )
 
-        github_issue = self.github_service.get_issue(story_id)
+        github_issue = get_issue(story_id)
         if not github_issue:
             logger.error(f"Story #{story_id} not found on GitHub.")
             return None

@@ -1049,6 +1049,30 @@ def remove_label_from_issue(issue_number: int, label_name: str) -> bool:
     return result.success
 
 
+def update_issue(
+    issue_number: int,
+    title: Optional[str] = None,
+    body: Optional[str] = None,
+    state: Optional[str] = None,
+    labels: Optional[List[str]] = None,
+    assignees: Optional[List[str]] = None,
+) -> Optional[Issue]:
+    """Backwards compatibility function."""
+    import asyncio
+
+    service = GitHubService()
+    result = asyncio.run(
+        service.update_issue(issue_number, title, body, state, labels, assignees)
+    )
+    return result.data if result.success else None
+
+
+def get_issue_comments(issue_number: int) -> List[IssueComment]:
+    """Backwards compatibility function."""
+    service = GitHubService()
+    return service.get_issue_comments(issue_number)
+
+
 # Example/Test function
 async def test_github_service():
     """Test function for GitHubService."""

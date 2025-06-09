@@ -13,7 +13,12 @@ from dotenv import load_dotenv
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from config import get_config
-from github_handler import GitHubService
+from github_handler import (
+    GitHubService,
+    add_label_to_issue,
+    get_issue,
+    remove_label_from_issue,
+)
 from llm_handler import LLMService
 from story_manager import StoryOrchestrator  # For interaction with AI logic
 
@@ -460,7 +465,7 @@ async def execute_auto_actions(
                     role_slug = role_name.replace(" ", "-").lower()
                     role_label = f"needs/{role_slug}"
                     if role_label not in updated_labels:
-                        if github_service.add_label_to_issue(issue_number, role_label):
+                        if add_label_to_issue(issue_number, role_label):
                             updated_labels.append(role_label)
                             logger.info(
                                 f"[{issue_number}] Added role label: {role_label}"
@@ -601,13 +606,13 @@ async def _transition_to_state(
     for label in current_labels:
         if label.startswith("story/") and label != new_state_label:
             logger.info(f"[{issue_number}] Removing old state label: {label}")
-            if github_service.remove_label_from_issue(issue_number, label):
+            if remove_label_from_issue(issue_number, label):
                 if label in labels_after_removal:
                     labels_after_removal.remove(label)
     current_labels = labels_after_removal
     if new_state_label not in current_labels:
         logger.info(f"[{issue_number}] Adding new state label: {new_state_label}")
-        if github_service.add_label_to_issue(issue_number, new_state_label):
+        if add_label_to_issue(issue_number, new_state_label):
             current_labels.append(new_state_label)
     current_labels = await apply_label_cleanup_rules(
         issue_number,
@@ -737,7 +742,7 @@ async def process_story_state(
     if trigger_event == "issues" and action == "opened":
         if not current_story_label:  # Only if no story label exists
             logger.info(f"[{issue_number}] New issue. Initializing to 'story/draft'.")
-            issue_details = github_service.get_issue(issue_number)
+            issue_details = get_issue(issue_number)
             if not issue_details:
                 logger.error(f"[{issue_number}] Cannot fetch issue details. Aborting.")
                 return

@@ -1,1 +1,23 @@
-{}
+{
+  "repositories": {
+    "backend": {
+      "name": "project/backend",
+      "type": "backend",
+      "description": "Backend API and services",
+      "dependencies": [],
+      "story_labels": ["backend", "api"]
+    },
+    "frontend": {
+      "name": "project/frontend", 
+      "type": "frontend",
+      "description": "User interface and client applications",
+      "dependencies": ["backend"],
+      "story_labels": ["frontend", "ui"]
+    }
+  },
+  "default_repository": "backend",
+  "story_workflow": {
+    "create_subtickets": true,
+    "respect_dependencies": true
+  }
+}

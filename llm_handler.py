@@ -7,7 +7,7 @@ import os # Added for explicit getenv for safety, though config should handle it
 import aiohttp
 import json
 
-from .config import OPENAI_API_KEY, OLLAMA_API_HOST, DEFAULT_LLM_PROVIDER, GITHUB_TOKEN
+from config import OPENAI_API_KEY, OLLAMA_API_HOST, DEFAULT_LLM_PROVIDER, GITHUB_TOKEN
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 

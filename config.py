@@ -1,11 +1,50 @@
 import os
 import logging
 import re
-from typing import Optional, Dict, Any
+import json
+from typing import Optional, Dict, Any, List
 from pathlib import Path
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from dotenv import load_dotenv
 
+
+@dataclass
+class RepositoryConfig:
+    """Configuration for a single repository in multi-repository setup."""
+    name: str
+    type: str
+    description: str
+    dependencies: List[str] = field(default_factory=list)
+    story_labels: List[str] = field(default_factory=list)
+
+@dataclass
+class MultiRepositoryConfig:
+    """Configuration for multi-repository setup."""
+    repositories: Dict[str, RepositoryConfig] = field(default_factory=dict)
+    default_repository: Optional[str] = None
+    story_workflow: Dict[str, Any] = field(default_factory=dict)
+    
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> 'MultiRepositoryConfig':
+        """Create from dictionary loaded from JSON."""
+        repositories = {}
+        for key, repo_data in data.get('repositories', {}).items():
+            repositories[key] = RepositoryConfig(**repo_data)
+        
+        return cls(
+            repositories=repositories,
+            default_repository=data.get('default_repository'),
+            story_workflow=data.get('story_workflow', {})
+        )
+    
+    def get_repository(self, key: str) -> Optional[RepositoryConfig]:
+        """Get repository configuration by key."""
+        return self.repositories.get(key)
+    
+    def get_dependencies(self, repository_key: str) -> List[str]:
+        """Get dependencies for a repository."""
+        repo = self.get_repository(repository_key)
+        return repo.dependencies if repo else []
 
 @dataclass
 class Config:
@@ -18,8 +57,12 @@ class Config:
     # Endpoints
     ollama_api_host: str = "http://localhost:11434"
     
-    # GitHub Configuration
+    # GitHub Configuration (backward compatibility)
     github_repository: Optional[str] = None
+    
+    # Multi-repository Configuration
+    multi_repository_config: Optional[MultiRepositoryConfig] = None
+    storyteller_config_path: Optional[Path] = None
     
     # LLM Configuration
     default_llm_provider: str = "github"
@@ -34,23 +77,82 @@ class Config:
         self._validate_required_fields()
         self._validate_formats()
         self._validate_provider_config()
+        self._load_storyteller_config()
+    
+    def _load_storyteller_config(self):
+        """Load .storyteller/config.json if it exists."""
+        # Look for .storyteller/config.json in current directory and parent directories
+        current_path = Path.cwd()
+        for path_candidate in [current_path] + list(current_path.parents):
+            storyteller_config_path = path_candidate / '.storyteller' / 'config.json'
+            if storyteller_config_path.exists():
+                try:
+                    with open(storyteller_config_path, 'r') as f:
+                        config_data = json.load(f)
+                    self.multi_repository_config = MultiRepositoryConfig.from_dict(config_data)
+                    self.storyteller_config_path = storyteller_config_path
+                    logger = logging.getLogger(__name__)
+                    logger.info(f"Loaded multi-repository config from {storyteller_config_path}")
+                    break
+                except (json.JSONDecodeError, Exception) as e:
+                    logger = logging.getLogger(__name__)
+                    logger.warning(f"Failed to load .storyteller/config.json from {storyteller_config_path}: {e}")
+    
+    def is_multi_repository_mode(self) -> bool:
+        """Check if multi-repository mode is enabled."""
+        return self.multi_repository_config is not None and len(self.multi_repository_config.repositories) > 0
+    
+    def get_target_repository(self, repository_key: Optional[str] = None) -> Optional[str]:
+        """Get target repository name for operations."""
+        if self.is_multi_repository_mode():
+            if repository_key:
+                repo_config = self.multi_repository_config.get_repository(repository_key)
+                return repo_config.name if repo_config else None
+            elif self.multi_repository_config.default_repository:
+                repo_config = self.multi_repository_config.get_repository(self.multi_repository_config.default_repository)
+                return repo_config.name if repo_config else None
+        
+        # Fallback to single repository mode
+        return self.github_repository
+    
+    def get_repository_list(self) -> List[str]:
+        """Get list of available repository keys."""
+        if self.is_multi_repository_mode():
+            return list(self.multi_repository_config.repositories.keys())
+        return ['default'] if self.github_repository else []
+    
+    def get_repository_dependencies(self, repository_key: str) -> List[str]:
+        """Get dependencies for a repository."""
+        if self.is_multi_repository_mode():
+            return self.multi_repository_config.get_dependencies(repository_key)
+        return []
     
     def _validate_required_fields(self):
         """Validate required configuration fields."""
         if not self.github_token:
             raise ValueError("GITHUB_TOKEN is required")
         
-        if not self.github_repository:
-            raise ValueError("GITHUB_REPOSITORY is required")
+        # Validate repository configuration - either single repo or multi-repo setup
+        if not self.github_repository and not self.is_multi_repository_mode():
+            raise ValueError("Either GITHUB_REPOSITORY is required or .storyteller/config.json must define repositories")
     
     def _validate_formats(self):
         """Validate format of configuration values."""
-        # Validate GitHub repository format
-        if not re.match(r'^[\w.-]+/[\w.-]+$', self.github_repository):
+        # Validate GitHub repository format for single repository mode
+        if self.github_repository and not re.match(r'^[\w.-]+/[\w.-]+$', self.github_repository):
             raise ValueError(
                 f"Invalid GITHUB_REPOSITORY format: {self.github_repository}. "
                 "Expected 'owner/repo'"
             )
+        
+        # Validate multi-repository configuration
+        if self.is_multi_repository_mode():
+            for key, repo in self.multi_repository_config.repositories.items():
+                if not re.match(r'^[\w.-]+/[\w.-]+$', repo.name):
+                    raise ValueError(
+                        f"Invalid repository name format in .storyteller/config.json: {repo.name}. "
+                        "Expected 'owner/repo'"
+                    )
         
         # Validate log level
         valid_log_levels = {'DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL'}
@@ -109,7 +211,7 @@ class Config:
     
     def to_dict(self) -> Dict[str, Any]:
         """Convert configuration to dictionary."""
-        return {
+        result = {
             'openai_api_key': '***' if self.openai_api_key else None,
             'github_token': '***' if self.github_token else None,
             'ollama_api_host': self.ollama_api_host,
@@ -117,8 +219,15 @@ class Config:
             'default_llm_provider': self.default_llm_provider,
             'log_level': self.log_level,
             'max_retries': self.max_retries,
-            'timeout_seconds': self.timeout_seconds
+            'timeout_seconds': self.timeout_seconds,
+            'multi_repository_mode': self.is_multi_repository_mode(),
         }
+        
+        if self.is_multi_repository_mode():
+            result['available_repositories'] = list(self.multi_repository_config.repositories.keys())
+            result['default_repository'] = self.multi_repository_config.default_repository
+        
+        return result
 
 
 def setup_logging(config: Config) -> logging.Logger:

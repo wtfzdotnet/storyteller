@@ -4,6 +4,7 @@ This is the main entry point for all AI-related documentation, project context, 
 
 ## Contents
 - Project context for AI and Copilot usage
+- Multi-repository configuration and workflow
 - Role-specific guidance (see `roles/` subfolder)
 - Advanced prompt engineering and workflow tips
 - Reference to additional AI documentation in this folder
@@ -11,6 +12,71 @@ This is the main entry point for all AI-related documentation, project context, 
 ---
 
 For Copilot configuration and actionable instructions, see `.github/copilot-instructions.md`.
+
+## Multi-Repository Configuration
+
+This project supports both single repository and multi-repository modes for managing user stories across backend and frontend components.
+
+### Configuration Structure
+
+The multi-repository configuration is defined in `.storyteller/config.json`:
+
+```json
+{
+  "repositories": {
+    "backend": {
+      "name": "project/backend",
+      "type": "backend", 
+      "description": "Backend API and services",
+      "dependencies": [],
+      "story_labels": ["backend", "api"]
+    },
+    "frontend": {
+      "name": "project/frontend",
+      "type": "frontend",
+      "description": "User interface and client applications", 
+      "dependencies": ["backend"],
+      "story_labels": ["frontend", "ui"]
+    }
+  },
+  "default_repository": "backend",
+  "story_workflow": {
+    "create_subtickets": true,
+    "respect_dependencies": true
+  }
+}
+```
+
+### Multi-Repository Commands
+
+#### List Available Repositories
+```bash
+python main.py story list-repositories
+```
+
+#### Create Story in Specific Repository
+```bash
+python main.py story create "User authentication system" --repository backend
+```
+
+#### Create Stories Across Multiple Repositories
+```bash
+python main.py story create-multi "User dashboard with API" --repos backend,frontend
+```
+
+### Dependency Management
+
+The system automatically handles repository dependencies:
+- Stories are created in dependency order (backend before frontend)
+- Cross-repository references are added automatically
+- Dependency information is included in story prompts
+
+### Environment Variables
+
+For backward compatibility, single repository mode is still supported via environment variables:
+- `GITHUB_REPOSITORY=owner/repo` - Single repository mode
+- `GITHUB_TOKEN=token` - Required for GitHub API access
+
 
 # Recipe Authority Platform - AI Expert Team
 

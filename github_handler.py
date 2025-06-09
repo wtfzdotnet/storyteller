@@ -777,6 +777,42 @@ class GitHubService:
             if operations:
                 logger.info(f"Completed batch operation with {len(operations)} operations")
     
+    async def get_copilot_instructions(self, repository_name: str) -> Optional[str]:
+        """
+        Fetch .github/copilot-instructions.md file from a repository.
+        
+        Args:
+            repository_name: Repository name in format 'owner/repo'
+            
+        Returns:
+            Content of copilot-instructions.md file or None if not found
+        """
+        try:
+            # Get the repository
+            repo = self.github_client.get_repo(repository_name)
+            
+            # Try to get the copilot instructions file
+            file_path = ".github/copilot-instructions.md"
+            file_content = repo.get_contents(file_path)
+            
+            if file_content:
+                content = file_content.decoded_content.decode('utf-8')
+                logger.info(f"Successfully retrieved copilot instructions from {repository_name}")
+                return content
+            else:
+                logger.info(f"No copilot instructions found in {repository_name}")
+                return None
+                
+        except UnknownObjectException:
+            logger.info(f"Copilot instructions file not found in {repository_name}")
+            return None
+        except GithubException as e:
+            logger.warning(f"Failed to retrieve copilot instructions from {repository_name}: {e}")
+            return None
+        except Exception as e:
+            logger.error(f"Unexpected error retrieving copilot instructions from {repository_name}: {e}")
+            return None
+
     async def health_check(self) -> GitHubOperationResult:
         """
         Perform a health check on the GitHub service.

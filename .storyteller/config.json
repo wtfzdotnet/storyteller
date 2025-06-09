@@ -1,9 +1,9 @@
 {
   "repositories": {
     "backend": {
-      "name": "project/backend",
+      "name": "wtfzdotnet/recipeer",
       "type": "backend",
-      "description": "Backend API and services",
+      "description": "Backend microservices that provide api's and services",
       "dependencies": [],
       "story_labels": ["backend", "api"]
     },

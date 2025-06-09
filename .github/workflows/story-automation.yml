@@ -1,4 +1,4 @@
-name: User Story Automation
+name: Story Automation
 
 on:
   issues:
@@ -22,23 +22,6 @@ jobs:
       with:
         fetch-depth: 0
 
-    - name: Check for Python/Docker changes
-      id: changes
-      uses: dorny/paths-filter@v2
-      with:
-        filters: |
-          ai:
-            - 'ai/**/*.py'
-            - 'ai/requirements.txt'
-            - 'ai/Dockerfile'
-            - 'ai/.dockerignore'
-
-    - name: Set up Docker Buildx
-      uses: docker/setup-buildx-action@v3
-      with:
-        driver: docker-container
-        buildkitd-flags: --allow-insecure-entitlement security.insecure
-
     - name: Convert repository name to lowercase
       id: lowercase
       run: |
@@ -51,23 +34,6 @@ jobs:
         registry: ghcr.io
         username: ${{ github.actor }}
         password: ${{ secrets.GITHUB_TOKEN }}
-
-    - name: Build and push AI automation Docker image
-      uses: docker/build-push-action@v5
-      with:
-        context: ./ai
-        file: ./ai/Dockerfile
-        platforms: linux/amd64
-        tags: |
-          ghcr.io/${{ steps.lowercase.outputs.repo_owner }}/ai-automation:latest
-          ghcr.io/${{ steps.lowercase.outputs.repo_owner }}/ai-automation:${{ github.sha }}
-        push: true
-        cache-from: |
-          type=gha
-          type=registry,ref=ghcr.io/${{ steps.lowercase.outputs.repo_owner }}/ai-automation:buildcache
-        cache-to: |
-          type=gha,mode=max
-          type=registry,ref=ghcr.io/${{ steps.lowercase.outputs.repo_owner }}/ai-automation:buildcache,mode=max
 
     - name: Process Story State Change
       id: process_story_step
@@ -96,17 +62,26 @@ jobs:
           COMMENT_BODY_ARG="--comment-body \"$COMMENT_BODY_ESCAPED\""
         fi
         
-        # Run the AI automation using Docker image from registry
-        echo "Pulling Docker image from GHCR..."
-        docker pull ghcr.io/${{ steps.lowercase.outputs.repo_owner }}/ai-automation:latest
+        # Try to pull Docker image from registry, fallback to local build if not available
+        echo "Attempting to pull Docker image from GHCR..."
+        if docker pull ghcr.io/${{ steps.lowercase.outputs.repo_owner }}/storyteller:latest; then
+          echo "✅ Successfully pulled Docker image from registry"
+          DOCKER_IMAGE="ghcr.io/${{ steps.lowercase.outputs.repo_owner }}/storyteller:latest"
+        else
+          echo "⚠️  Docker image not found in registry, building locally..."
+          # Build the Docker image locally as fallback
+          docker build -t local-storyteller .
+          DOCKER_IMAGE="local-storyteller"
+          echo "✅ Successfully built Docker image locally"
+        fi
         
-        echo "Running workflow processor..."
+        echo "Running workflow processor with image: $DOCKER_IMAGE"
         docker run --rm \
           -e GITHUB_TOKEN="${GITHUB_TOKEN}" \
           -e DEFAULT_LLM_PROVIDER="${DEFAULT_LLM_PROVIDER}" \
           -e GITHUB_REPOSITORY="${GITHUB_REPOSITORY}" \
           -e USE_REPOSITORY_PROMPTS="${USE_REPOSITORY_PROMPTS}" \
-          ghcr.io/${{ steps.lowercase.outputs.repo_owner }}/ai-automation:latest \
+          "$DOCKER_IMAGE" \
           workflow-processor \
           --issue-number "${{ github.event.issue.number }}" \
           --trigger-event "${{ github.event_name }}" \

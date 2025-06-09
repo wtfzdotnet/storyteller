@@ -1,21 +1,12 @@
+import asyncio
 import logging
 from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel, Field
 
 from config import Config, get_config
-from github_handler import (
-    GitHubService,
-)
+from github_handler import GitHubService
 from github_handler import Issue as GitHubIssue  # Renamed to avoid clash
-from github_handler import (
-    add_comment_to_issue,
-    add_label_to_issue,
-    create_issue,
-    get_issue,
-    remove_label_from_issue,
-    update_issue,
-)
 from llm_handler import LLMService
 
 logger = logging.getLogger(__name__)
@@ -260,11 +251,12 @@ class StoryOrchestrator:
             labels = ["user_story", "ai_generated"] + role_labels
 
             logger.info(f"Creating GitHub issue with Title: '{story_title}'")
-            created_issue = create_issue(
+            created_issue_result = await self.github_service.create_issue(
                 title=story_title, body=story_body, labels=labels
             )
 
-            if created_issue:
+            if created_issue_result.success:
+                created_issue = created_issue_result.data
                 user_story = UserStory(
                     id=created_issue.number,
                     title=created_issue.title,
@@ -277,7 +269,7 @@ class StoryOrchestrator:
                     f"Successfully created story #{user_story.id} - '{user_story.title}'"
                 )
                 # Add a comment indicating it was AI generated and what roles are expected for feedback
-                add_comment_to_issue(
+                await self.github_service.add_comment_to_issue(
                     created_issue.number,
                     f"This user story was automatically generated based on the prompt: '{initial_prompt}'.\n\n"
                     f"Awaiting feedback from the following roles: {', '.join(roles_to_consult)}.",
@@ -681,9 +673,12 @@ Focus on technical implementation details and provide clear guidance for the dev
 
         # Create the GitHub issue directly
         try:
-            created_issue = create_issue(title=story_title, body=prompt, labels=labels)
+            created_issue_result = await self.github_service.create_issue(
+                title=story_title, body=prompt, labels=labels
+            )
 
-            if created_issue:
+            if created_issue_result.success:
+                created_issue = created_issue_result.data
                 user_story = UserStory(
                     id=created_issue.number,
                     title=created_issue.title,
@@ -704,7 +699,9 @@ Focus on technical implementation details and provide clear guidance for the dev
                         f"This refactor ticket was created immediately and is ready for development. "
                         f"Review the file patterns above to understand the scope of changes needed."
                     )
-                    add_comment_to_issue(created_issue.number, files_comment)
+                    await self.github_service.add_comment_to_issue(
+                        created_issue.number, files_comment
+                    )
 
                 logger.info(
                     f"Successfully created immediate refactor ticket #{created_issue.number}"
@@ -894,7 +891,7 @@ Focus on technical implementation details and provide clear guidance for the dev
             reference_comment = "**Cross-Repository Dependencies:**\n\n" + "\n".join(
                 references
             )
-            add_comment_to_issue(story.id, reference_comment)
+            await self.github_service.add_comment_to_issue(story.id, reference_comment)
 
     async def gather_feedback_and_iterate(
         self, story_id: int, roles_providing_feedback: List[str]
@@ -903,10 +900,11 @@ Focus on technical implementation details and provide clear guidance for the dev
             f"Gathering feedback for story #{story_id} from roles: {roles_providing_feedback}"
         )
 
-        github_issue = get_issue(story_id)
-        if not github_issue:
+        github_issue_result = await self.github_service.get_issue(story_id)
+        if not github_issue_result.success:
             logger.error(f"Story #{story_id} not found on GitHub.")
             return None
+        github_issue = github_issue_result.data
 
         current_story_repr = UserStory(
             id=github_issue.number,
@@ -917,14 +915,19 @@ Focus on technical implementation details and provide clear guidance for the dev
             # roles_involved can be inferred from labels or passed if known
         )
         # Load existing comments into feedback_log
-        existing_comments = self.github_service.get_issue_comments(story_id)
-        for comment in existing_comments:
-            current_story_repr.feedback_log.append(
-                {
-                    "role": comment.user.login,  # Using GitHub username as role placeholder
-                    "comment": comment.body,
-                }
-            )
+        existing_comments_result = await self.github_service.get_issue_comments(
+            story_id
+        )
+        existing_comments = []
+        if existing_comments_result.success:
+            existing_comments = existing_comments_result.data
+            for comment in existing_comments:
+                current_story_repr.feedback_log.append(
+                    {
+                        "role": comment.user.login,  # Using GitHub username as role placeholder
+                        "comment": comment.body,
+                    }
+                )
 
         # Simulate Feedback Generation using LLM for each role
         generated_feedback_texts = []
@@ -954,7 +957,9 @@ Focus on technical implementation details and provide clear guidance for the dev
 
                 if feedback_comment_text:
                     comment_body = f"**AI-Generated Feedback from Perspective of {role}**:\n\n{feedback_comment_text}"
-                    add_comment_to_issue(story_id, comment_body)
+                    await self.github_service.add_comment_to_issue(
+                        story_id, comment_body
+                    )
                     current_story_repr.feedback_log.append(
                         {"role": f"{role} (AI)", "comment": feedback_comment_text}
                     )
@@ -1020,7 +1025,7 @@ Focus on technical implementation details and provide clear guidance for the dev
 
             if llm_summary_and_suggestions:
                 # Post LLM's summary and suggestions as a comment for human review
-                add_comment_to_issue(
+                await self.github_service.add_comment_to_issue(
                     story_id,
                     f"**AI Suggested Iteration and Feedback Summary**:\n\n{llm_summary_and_suggestions}",
                 )
@@ -1028,7 +1033,7 @@ Focus on technical implementation details and provide clear guidance for the dev
                     "pending_review"  # Or "needs_iteration_review"
                 )
                 # Update labels on GitHub to reflect this status
-                update_issue(
+                await self.github_service.update_issue(
                     story_id,
                     labels=["user_story", "pending_review", "ai_suggestions_added"],
                 )
@@ -1046,18 +1051,21 @@ Focus on technical implementation details and provide clear guidance for the dev
 
         return current_story_repr
 
-    def get_story_details(self, story_id: int) -> Optional[UserStory]:
+    async def get_story_details(self, story_id: int) -> Optional[UserStory]:
         logger.info(f"Fetching details for story #{story_id}")
-        github_issue = get_issue(story_id)
-        if not github_issue:
+        github_issue_result = await self.github_service.get_issue(story_id)
+        if not github_issue_result.success:
             logger.warning(f"Story #{story_id} not found on GitHub.")
             return None
+        github_issue = github_issue_result.data
 
-        comments = self.github_service.get_issue_comments(story_id)
-        feedback_log = [
-            {"role": comment.user.login, "comment": comment.body}
-            for comment in comments
-        ]
+        comments_result = await self.github_service.get_issue_comments(story_id)
+        feedback_log = []
+        if comments_result.success:
+            feedback_log = [
+                {"role": comment.user.login, "comment": comment.body}
+                for comment in comments_result.data
+            ]
 
         # Infer roles_involved from labels if possible (simple example)
         roles_involved = []
@@ -1084,7 +1092,12 @@ Focus on technical implementation details and provide clear guidance for the dev
         logger.info(
             f"Checking agreement for story #{story_id} among roles: {participating_roles}"
         )
-        comments = self.github_service.get_issue_comments(story_id)
+        # Check for agreement (this is likely to be False initially)
+        comments_result = await self.github_service.get_issue_comments(story_id)
+        comments = []
+        if comments_result.success:
+            comments = comments_result.data
+
         if not comments:
             logger.info(
                 f"No comments found for story #{story_id}. Agreement cannot be determined."
@@ -1171,13 +1184,15 @@ Focus on technical implementation details and provide clear guidance for the dev
         logger.info(f"Finalizing story #{story_id} with iterations analysis")
 
         # Get the current issue
-        github_issue = get_issue(story_id)
-        if not github_issue:
+        github_issue_result = await self.github_service.get_issue(story_id)
+        if not github_issue_result.success:
             logger.error(f"Story #{story_id} not found on GitHub.")
             return None
+        github_issue = github_issue_result.data
 
         # Get all comments (feedback iterations)
-        comments = self.github_service.get_issue_comments(story_id)
+        comments_result = await self.github_service.get_issue_comments(story_id)
+        comments = comments_result.data if comments_result.success else []
 
         # Extract iteration history from AI-generated comments
         iteration_history = []
@@ -1309,16 +1324,19 @@ Focus on technical implementation details and provide clear guidance for the dev
         # Update the issue
         logger.info(f"Updating issue #{story_id} with finalized story...")
         try:
-            updated_issue = self.github_service.update_issue(
+            updated_issue_result = await self.github_service.update_issue(
                 story_id, title=github_issue.title, body=updated_content
             )
-            if not updated_issue:
+            if not updated_issue_result.success:
                 logger.error(f"Failed to update issue #{story_id}")
                 return None
+            updated_issue = updated_issue_result.data
 
             # Add finalization labels
-            self.github_service.add_label_to_issue(story_id, "story/finalized")
-            self.github_service.add_label_to_issue(story_id, "needs/user-approval")
+            await self.github_service.add_label_to_issue(story_id, "story/finalized")
+            await self.github_service.add_label_to_issue(
+                story_id, "needs/user-approval"
+            )
 
             # Remove iteration-related labels and old state labels
             current_labels = [label.name for label in github_issue.labels]
@@ -1338,7 +1356,7 @@ Focus on technical implementation details and provide clear guidance for the dev
 
             # Remove old labels
             for label in labels_to_remove:
-                self.github_service.remove_label_from_issue(story_id, label)
+                await self.github_service.remove_label_from_issue(story_id, label)
 
             # Add a comment indicating finalization
             finalization_comment = (
@@ -1351,7 +1369,9 @@ Focus on technical implementation details and provide clear guidance for the dev
                 "- 🔄 The story will automatically transition to ready for development upon approval\n\n"
                 f"**Format:** {format_type} | **Original Preserved:** {'Yes' if preserve_original else 'No'}"
             )
-            self.github_service.add_comment_to_issue(story_id, finalization_comment)
+            await self.github_service.add_comment_to_issue(
+                story_id, finalization_comment
+            )
 
             # Create updated UserStory representation
             finalized_story = UserStory(
@@ -1427,11 +1447,8 @@ if __name__ == "__main__":
 
     from dotenv import load_dotenv
 
-    from ..ai_core.github_handler import GitHubService  # Relative import for testing
-    from ..ai_core.llm_handler import LLMService  # Relative import for testing
-
     # Load .env file from project root
-    dotenv_path = os.path.join(os.path.dirname(__file__), "..", "..", ".env")
+    dotenv_path = os.path.join(os.path.dirname(__file__), "..", ".env")
     if os.path.exists(dotenv_path):
         load_dotenv(dotenv_path=dotenv_path)
         print(f"Loaded .env file from: {dotenv_path}")
@@ -1439,6 +1456,15 @@ if __name__ == "__main__":
         # Fallback for running from project root
         load_dotenv()
         print(f"Attempted to load .env from default location.")
+
+    try:
+        from github_handler import GitHubService
+        from llm_handler import LLMService
+    except ImportError:
+        print(
+            "Warning: Could not import services for testing. Skipping test execution."
+        )
+        exit(1)
 
     logging.basicConfig(
         level=logging.INFO,
@@ -1495,7 +1521,7 @@ if __name__ == "__main__":
             logger.info(
                 f"\n--- Test 2: Get Story Details for Story #{story_id_for_test} ---"
             )
-            story_details = orchestrator.get_story_details(story_id_for_test)
+            story_details = await orchestrator.get_story_details(story_id_for_test)
             if story_details:
                 logger.info(
                     f"Retrieved details: ID={story_details.id}, Title='{story_details.title}', Status='{story_details.status}'"
@@ -1512,7 +1538,7 @@ if __name__ == "__main__":
                 logger.info(
                     f"Attempting to close issue #{story_id_for_test} due to error..."
                 )
-                github_service.update_issue(
+                await github_service.update_issue(
                     story_id_for_test,
                     state="closed",
                     body=f"{new_story.body}\n\n---\nClosed due to test error.",
@@ -1543,7 +1569,7 @@ if __name__ == "__main__":
                 logger.info(
                     f"Attempting to close issue #{story_id_for_test} due to error..."
                 )
-                github_service.update_issue(
+                await github_service.update_issue(
                     story_id_for_test,
                     state="closed",
                     body=f"{new_story.body}\n\n---\nClosed due to test error.",
@@ -1562,7 +1588,7 @@ if __name__ == "__main__":
             logger.info(
                 f"Manually adding a test 'approval' comment from 'Product Owner' for story #{story_id_for_test}"
             )
-            github_service.add_comment_to_issue(
+            await github_service.add_comment_to_issue(
                 story_id_for_test, "Product Owner: LGTM, approved for development!"
             )
             await asyncio.sleep(2)  # Short delay for comment to post
@@ -1577,7 +1603,7 @@ if __name__ == "__main__":
                 logger.info(
                     f"LLM determined agreement was reached for story #{story_id_for_test}."
                 )
-                github_service.update_issue(
+                await github_service.update_issue(
                     story_id_for_test,
                     labels=["user_story", "agreed", "ai_validated_agreement"],
                 )
@@ -1588,15 +1614,19 @@ if __name__ == "__main__":
 
             # Clean up: Close the test issue
             logger.info(f"\n--- Test Cleanup: Closing Story #{story_id_for_test} ---")
-            final_body_for_closure = orchestrator.get_story_details(
-                story_id_for_test
-            ).body  # Get latest body
-            closed_issue = github_service.update_issue(
+            latest_story = await orchestrator.get_story_details(story_id_for_test)
+            final_body_for_closure = (
+                latest_story.body if latest_story else "Test completed"
+            )
+            closed_issue_result = await github_service.update_issue(
                 story_id_for_test,
                 state="closed",
                 body=f"{final_body_for_closure}\n\n---\nTest completed and issue closed.",
             )
-            if closed_issue and closed_issue.state == "closed":
+            if (
+                closed_issue_result.success
+                and closed_issue_result.data.state == "closed"
+            ):
                 logger.info(f"Successfully closed story #{story_id_for_test}.")
             else:
                 logger.error(
@@ -1617,7 +1647,7 @@ if __name__ == "__main__":
                     gh_service_cleanup = (
                         GitHubService()
                     )  # New instance if previous failed
-                    gh_service_cleanup.update_issue(
+                    await gh_service_cleanup.update_issue(
                         story_id_for_test,
                         state="closed",
                         body=f"Issue closed due to test script error: {e}",

@@ -221,7 +221,43 @@ for common scenarios.
 - AI team can provide implementation guidance
 - Story is validated against acceptance criteria
 
-## Tips for Effective Stories
+## Refactor Mode
+
+The refactor mode enables immediate creation of technical debt and code improvement tickets without going through the normal consensus workflow. Perfect for:
+
+- **Code Extraction**: Breaking down large components into services
+- **Performance Optimization**: Improving slow operations and bottlenecks
+- **Code Modernization**: Updating to new standards and frameworks
+- **File Organization**: Moving and renaming for better structure
+
+### Quick Examples
+
+```bash
+# Basic refactor using GitHub Issues
+# Create an issue with title starting with "Refactor:" and the system will detect it
+
+# Or use CLI for immediate tickets
+python main.py story refactor "Extract user service from controller"
+
+# Specific type and repository targeting
+python main.py story refactor "Optimize database queries" --type optimize --repos backend
+
+# Include specific files for context
+python main.py story refactor "Modernize auth components" --files "auth/*.py" --type modernize
+```
+
+**Key Benefits:**
+- ✅ **Immediate creation** - No consensus workflow delay
+- ✅ **File context** - Automatically identifies relevant files
+- ✅ **Role assignment** - Assigns appropriate experts based on refactor type
+- ✅ **Multi-repository** - Creates tailored tickets across backend/frontend
+- ✅ **Ready for development** - Tickets are immediately actionable
+
+See [REFACTOR_MODE.md](REFACTOR_MODE.md) for detailed documentation.
+
+## Story Lifecycle
+
+### 1. Submission
 
 ### Be Specific
 Instead of: "Better recipe search"

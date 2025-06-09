@@ -3,8 +3,8 @@
 Test script to verify the setup without requiring API keys
 """
 
-import sys
 import os
+import sys
 from pathlib import Path
 
 

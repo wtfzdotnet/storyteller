@@ -6,8 +6,9 @@ Test script for refactor functionality without requiring GitHub connectivity.
 import asyncio
 import unittest
 from unittest.mock import Mock, patch
-from story_manager import StoryOrchestrator, UserStory
+
 from config import Config
+from story_manager import StoryOrchestrator, UserStory
 
 
 class TestRefactorMode(unittest.TestCase):

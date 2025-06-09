@@ -1,26 +1,4 @@
-# AI.md has moved
-
-The primary AI documentation has been relocated to `docs/ai/AI.md` for better organization. Please refer to that location for all AI-related project context, role guidance, and advanced usage.
-
-# AI Project Documentation & Guidance
-
-This is the main entry point for all AI-related documentation, project context, and advanced usage for the Recipe Authority API project.
-
-## Contents
-- Project context for AI and Copilot usage
-- Role-specific guidance (see `roles/` subfolder)
-- Advanced prompt engineering and workflow tips
-- Reference to additional AI documentation in this folder
-
----
-
 For Copilot configuration and actionable instructions, see `.github/copilot-instructions.md`.
-
-# Recipe Authority Platform - AI Expert Team
-
-> **Central AI Documentation Hub for the Recipe Authority Platform**
-
-This document serves as the primary guide for AI-assisted development on the Recipe Authority Platform. It provides context about our expert AI team structure, role definitions, and how to leverage AI documentation for enhanced development workflows.
 
 ## Project Context
 

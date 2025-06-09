@@ -1,10 +1,12 @@
 import logging
-from typing import Optional, List, Dict, Any
+from typing import Any, Dict, List, Optional
+
 from pydantic import BaseModel, Field
 
+from config import Config, get_config
+from github_handler import GitHubService
+from github_handler import Issue as GitHubIssue  # Renamed to avoid clash
 from llm_handler import LLMService
-from github_handler import GitHubService, Issue as GitHubIssue  # Renamed to avoid clash
-from config import get_config, Config
 
 logger = logging.getLogger(__name__)
 
@@ -1416,9 +1418,11 @@ Focus on technical implementation details and provide clear guidance for the dev
 if __name__ == "__main__":
     import asyncio
     import os
+
     from dotenv import load_dotenv
-    from ..ai_core.llm_handler import LLMService  # Relative import for testing
+
     from ..ai_core.github_handler import GitHubService  # Relative import for testing
+    from ..ai_core.llm_handler import LLMService  # Relative import for testing
 
     # Load .env file from project root
     dotenv_path = os.path.join(os.path.dirname(__file__), "..", "..", ".env")

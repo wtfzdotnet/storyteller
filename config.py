@@ -121,6 +121,12 @@ class Config:
             return list(self.multi_repository_config.repositories.keys())
         return ['default'] if self.github_repository else []
     
+    def get_repository_dependencies(self, repository_key: str) -> List[str]:
+        """Get dependencies for a repository."""
+        if self.is_multi_repository_mode():
+            return self.multi_repository_config.get_dependencies(repository_key)
+        return []
+    
     def _validate_required_fields(self):
         """Validate required configuration fields."""
         if not self.github_token:

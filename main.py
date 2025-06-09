@@ -60,6 +60,48 @@ DEFAULT_ROLES_TO_CONSULT = ["Product Owner", "Lead Developer", "QA Engineer"]
 DEFAULT_ROLES_FOR_FEEDBACK = ["Technical Lead", "UX Designer", "Product Owner"]
 
 
+@story_app.command(name="config", help="Show current configuration status.")
+def show_config_command():
+    """
+    Display current configuration including repository mode, available repositories,
+    and configuration sources.
+    """
+    from config import get_config
+    
+    config = get_config()
+    
+    typer.secho("📋 Current Configuration:", fg=typer.colors.BLUE, bold=True)
+    typer.echo("")
+    
+    # Basic configuration
+    typer.echo(f"🔧 GitHub Token: {'✅ Set' if config.github_token else '❌ Not set'}")
+    typer.echo(f"🤖 Default LLM Provider: {config.default_llm_provider}")
+    typer.echo(f"📊 Log Level: {config.log_level}")
+    typer.echo("")
+    
+    # Repository configuration
+    if config.is_multi_repository_mode():
+        typer.secho("🏢 Multi-Repository Mode: ✅ Enabled", fg=typer.colors.GREEN)
+        typer.echo(f"📂 Configuration Source: {config.storyteller_config_path}")
+        typer.echo(f"📁 Available Repositories: {len(config.get_repository_list())}")
+        
+        for key in config.get_repository_list():
+            repo_config = config.multi_repository_config.get_repository(key)
+            is_default = key == config.multi_repository_config.default_repository
+            marker = "⭐" if is_default else "  "
+            typer.echo(f"   {marker} {key}: {repo_config.name} ({repo_config.type})")
+        
+        if config.multi_repository_config.default_repository:
+            typer.echo(f"🎯 Default Repository: {config.multi_repository_config.default_repository}")
+    else:
+        typer.secho("🏢 Multi-Repository Mode: ❌ Disabled", fg=typer.colors.YELLOW)
+        typer.echo(f"📁 Single Repository: {config.github_repository}")
+        typer.echo("")
+        typer.secho("💡 To enable multi-repository mode:", fg=typer.colors.CYAN)
+        typer.echo("   Create a .storyteller/config.json file with repository definitions")
+        typer.echo("   See .storyteller/README.md for configuration examples")
+
+
 @story_app.command(name="list-repositories", help="List available repositories in multi-repository mode.")
 def list_repositories_command():
     """

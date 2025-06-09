@@ -36,7 +36,7 @@ class StoryOrchestrator:
         self,
         llm_service: LLMService,
         github_service: GitHubService,
-        config: Optional[Config] = None,
+        config: Optional["Config"] = None,
     ):
         self.llm_service = llm_service
         self.github_service = github_service
@@ -278,6 +278,438 @@ class StoryOrchestrator:
                 return None
         except Exception as e:
             logger.error(f"Error in create_new_story: {e}", exc_info=True)
+            return None
+
+    async def create_refactor_tickets(
+        self,
+        refactor_request: str,
+        refactor_type: str,
+        target_repositories: Optional[List[str]] = None,
+        specific_files: Optional[List[str]] = None,
+    ) -> Dict[str, Optional[UserStory]]:
+        """
+        Creates immediate refactor tickets across repositories with relevant file context.
+
+        Args:
+            refactor_request: Description of the refactor needed
+            refactor_type: Type of refactor (general, extract, move, rename, optimize, modernize)
+            target_repositories: List of repository keys to target (None = all repositories)
+            specific_files: Specific files to include in context
+
+        Returns:
+            Dictionary mapping repository keys to created UserStory objects
+        """
+        logger.info(f"Creating refactor tickets for: {refactor_request}")
+        logger.info(f"Refactor type: {refactor_type}")
+
+        if not self.config.is_multi_repository_mode():
+            logger.info("Single repository mode - creating single refactor ticket")
+            single_ticket = await self._create_single_refactor_ticket(
+                refactor_request, refactor_type, specific_files
+            )
+            return {"default": single_ticket}
+
+        # Determine target repositories
+        if target_repositories is None:
+            target_repositories = self.config.get_repository_list()
+
+        results = {}
+        logger.info(
+            f"Creating refactor tickets across repositories: {target_repositories}"
+        )
+
+        # For refactors, we don't need dependency ordering as they're independent tasks
+        for repo_key in target_repositories:
+            repo_config = self.config.multi_repository_config.get_repository(repo_key)
+            if not repo_config:
+                logger.warning(
+                    f"Repository configuration not found for key: {repo_key}"
+                )
+                results[repo_key] = None
+                continue
+
+            try:
+                # Discover relevant files for this repository
+                relevant_files = await self._discover_relevant_files(
+                    refactor_request, refactor_type, repo_key, specific_files
+                )
+
+                # Create repository-specific refactor ticket
+                ticket = await self._create_repository_refactor_ticket(
+                    refactor_request,
+                    refactor_type,
+                    repo_key,
+                    repo_config,
+                    relevant_files,
+                )
+                results[repo_key] = ticket
+
+                if ticket:
+                    logger.info(
+                        f"Created refactor ticket #{ticket.id} in repository {repo_config.name}"
+                    )
+                else:
+                    logger.error(
+                        f"Failed to create refactor ticket in repository {repo_config.name}"
+                    )
+
+            except Exception as e:
+                logger.error(
+                    f"Error creating refactor ticket in repository {repo_key}: {e}"
+                )
+                results[repo_key] = None
+
+        return results
+
+    async def _create_single_refactor_ticket(
+        self,
+        refactor_request: str,
+        refactor_type: str,
+        specific_files: Optional[List[str]] = None,
+    ) -> Optional[UserStory]:
+        """Create a single refactor ticket for single repository mode."""
+        relevant_files = await self._discover_relevant_files(
+            refactor_request, refactor_type, None, specific_files
+        )
+
+        # Get refactor-specific roles
+        roles_to_consult = self._get_refactor_roles(refactor_type)
+
+        # Create the refactor prompt with file context
+        refactor_prompt = self._create_refactor_prompt(
+            refactor_request, refactor_type, None, relevant_files
+        )
+
+        # Create the ticket immediately (skip consensus workflow)
+        ticket = await self._create_immediate_ticket(
+            refactor_prompt, roles_to_consult, refactor_type, relevant_files
+        )
+
+        return ticket
+
+    async def _create_repository_refactor_ticket(
+        self,
+        refactor_request: str,
+        refactor_type: str,
+        repo_key: str,
+        repo_config,
+        relevant_files: List[str],
+    ) -> Optional[UserStory]:
+        """Create a repository-specific refactor ticket."""
+        # Get refactor-specific roles
+        roles_to_consult = self._get_refactor_roles(refactor_type)
+
+        # Create repository-specific refactor prompt
+        refactor_prompt = self._create_refactor_prompt(
+            refactor_request, refactor_type, repo_key, relevant_files
+        )
+
+        # Create the ticket immediately (skip consensus workflow)
+        ticket = await self._create_immediate_ticket(
+            refactor_prompt, roles_to_consult, refactor_type, relevant_files, repo_key
+        )
+
+        return ticket
+
+    async def _discover_relevant_files(
+        self,
+        refactor_request: str,
+        refactor_type: str,
+        repo_key: Optional[str],
+        specific_files: Optional[List[str]],
+    ) -> List[str]:
+        """
+        Discover relevant files based on the refactor request and type.
+        """
+        relevant_files = []
+
+        # If specific files are provided, use them
+        if specific_files:
+            logger.info(f"Using provided specific files: {specific_files}")
+            return specific_files
+
+        # Use AI to analyze the refactor request and suggest relevant files/patterns
+        discovery_prompt = f"""
+        Analyze the following refactor request and suggest relevant file patterns, directories, or specific files that would likely be involved.
+
+        Refactor Request: {refactor_request}
+        Refactor Type: {refactor_type}
+        Repository Type: {repo_key if repo_key else 'general'}
+
+        Based on the refactor type, consider:
+        - extract: Look for files that might contain the code to be extracted
+        - move: Identify source and target locations
+        - rename: Find files that reference the items to be renamed  
+        - optimize: Locate performance-critical files or bottlenecks
+        - modernize: Find outdated patterns, dependencies, or syntax
+        - general: Analyze the request for relevant areas
+
+        Provide a list of file patterns or specific files (one per line) that would be relevant for this refactor.
+        Focus on commonly modified file types for this type of change.
+        Examples:
+        - **/*.py (for Python files)
+        - src/auth/*.js (for authentication JavaScript files)
+        - config/*.yml (for configuration files)
+        - README.md (for documentation updates)
+        """
+
+        try:
+            if self.use_repository_prompts:
+                # Get repository context for file discovery
+                role_docs = ["AI.md"]
+                if repo_key:
+                    role_docs.append(f"docs/ai/roles/{repo_key}-specific.md")
+
+                file_suggestions = await self.llm_service.query_llm(
+                    discovery_prompt, repository_references=role_docs
+                )
+            else:
+                file_suggestions = await self.llm_service.query_llm(discovery_prompt)
+
+            if file_suggestions:
+                # Parse the response to extract file patterns
+                lines = file_suggestions.strip().split("\n")
+                for line in lines:
+                    line = line.strip()
+                    if line and not line.startswith("#") and not line.startswith("-"):
+                        # Clean up common formatting
+                        if line.startswith("- "):
+                            line = line[2:]
+                        relevant_files.append(line)
+
+                logger.info(
+                    f"AI suggested {len(relevant_files)} relevant file patterns"
+                )
+            else:
+                logger.warning("AI returned no file suggestions")
+
+        except Exception as e:
+            logger.error(f"Error discovering relevant files: {e}")
+
+        # Add default patterns based on refactor type if no suggestions
+        if not relevant_files:
+            relevant_files = self._get_default_file_patterns(refactor_type, repo_key)
+
+        return relevant_files
+
+    def _get_default_file_patterns(
+        self, refactor_type: str, repo_key: Optional[str]
+    ) -> List[str]:
+        """Get default file patterns based on refactor type and repository."""
+        defaults = {
+            "extract": ["**/*.py", "**/*.js", "**/*.ts", "src/**/*"],
+            "move": ["**/*.py", "**/*.js", "**/*.ts", "**/*.md"],
+            "rename": ["**/*.py", "**/*.js", "**/*.ts", "**/*.json", "**/*.yml"],
+            "optimize": ["**/*.py", "**/*.js", "**/*.ts", "**/*.sql"],
+            "modernize": [
+                "**/*.py",
+                "**/*.js",
+                "**/*.ts",
+                "package.json",
+                "requirements.txt",
+            ],
+            "general": ["**/*.py", "**/*.js", "**/*.ts", "**/*.md"],
+        }
+
+        patterns = defaults.get(refactor_type, defaults["general"])
+
+        # Customize based on repository type
+        if repo_key:
+            repo_config = (
+                self.config.multi_repository_config.get_repository(repo_key)
+                if self.config.is_multi_repository_mode()
+                else None
+            )
+            if repo_config:
+                if repo_config.type == "backend":
+                    patterns = ["**/*.py", "**/*.sql", "**/*.yml", "**/*.json"]
+                elif repo_config.type == "frontend":
+                    patterns = [
+                        "**/*.js",
+                        "**/*.ts",
+                        "**/*.jsx",
+                        "**/*.tsx",
+                        "**/*.css",
+                        "**/*.scss",
+                    ]
+                elif repo_config.type == "mobile":
+                    patterns = [
+                        "**/*.swift",
+                        "**/*.kt",
+                        "**/*.dart",
+                        "**/*.js",
+                        "**/*.ts",
+                    ]
+
+        return patterns
+
+    def _get_refactor_roles(self, refactor_type: str) -> List[str]:
+        """Get appropriate roles based on refactor type."""
+        role_mapping = {
+            "extract": ["Senior Developer", "Software Architect", "Code Reviewer"],
+            "move": ["Senior Developer", "DevOps Engineer", "Tech Lead"],
+            "rename": ["Senior Developer", "Documentation Specialist", "QA Engineer"],
+            "optimize": ["Performance Engineer", "Senior Developer", "DevOps Engineer"],
+            "modernize": ["Tech Lead", "Senior Developer", "Security Engineer"],
+            "general": ["Senior Developer", "Tech Lead", "Code Reviewer"],
+        }
+
+        return role_mapping.get(refactor_type, role_mapping["general"])
+
+    def _create_refactor_prompt(
+        self,
+        refactor_request: str,
+        refactor_type: str,
+        repo_key: Optional[str],
+        relevant_files: List[str],
+    ) -> str:
+        """Create a comprehensive refactor prompt with context."""
+        repo_context = ""
+        if repo_key and self.config.is_multi_repository_mode():
+            repo_config = self.config.multi_repository_config.get_repository(repo_key)
+            if repo_config:
+                repo_context = f"\n\nRepository Context: {repo_config.name} ({repo_config.type})\nDescription: {repo_config.description}"
+
+        file_context = ""
+        if relevant_files:
+            file_context = f"\n\nRelevant Files/Patterns:\n" + "\n".join(
+                f"- {file}" for file in relevant_files
+            )
+
+        prompt = f"""# Refactor Task: {refactor_request}
+
+## Refactor Type: {refactor_type.title()}
+
+## Task Description
+{refactor_request}{repo_context}{file_context}
+
+## Deliverables
+As a refactor task, this should result in:
+
+1. **Analysis**: Understanding of current state and what needs to change
+2. **Planning**: Step-by-step refactor plan with risk assessment
+3. **Implementation**: Actual code changes required
+4. **Testing**: How to verify the refactor maintains functionality
+5. **Documentation**: Updates to documentation, comments, or README files
+
+## Acceptance Criteria
+- [ ] Code is refactored according to the specified requirements
+- [ ] All existing functionality is preserved
+- [ ] Code quality is improved (readability, maintainability, performance)
+- [ ] Tests pass and cover refactored code
+- [ ] Documentation is updated to reflect changes
+- [ ] No breaking changes for existing API consumers
+
+## Additional Context
+This is an immediate refactor task that bypasses the normal story consensus workflow.
+Focus on technical implementation details and provide clear guidance for the development team.
+"""
+
+        return prompt
+
+    async def _create_immediate_ticket(
+        self,
+        prompt: str,
+        roles_to_consult: List[str],
+        refactor_type: str,
+        relevant_files: List[str],
+        target_repository_key: Optional[str] = None,
+    ) -> Optional[UserStory]:
+        """Create an immediate ticket without going through consensus workflow."""
+        # Generate a proper title and body using AI
+        title_prompt = f"""
+        Create a concise, descriptive title (under 80 characters) for this refactor ticket:
+        
+        {prompt[:500]}...
+        
+        The title should start with "Refactor:" and clearly indicate what is being refactored.
+        """
+
+        try:
+            if self.use_repository_prompts:
+                role_docs = self._get_role_documentation_paths(["Technical Lead"])
+                story_title = await self.llm_service.query_llm(
+                    title_prompt, repository_references=role_docs
+                )
+            else:
+                story_title = await self.llm_service.query_llm(title_prompt)
+
+            # Clean up the title
+            if story_title:
+                story_title = story_title.strip().strip('"').strip("'")
+                if not story_title.startswith("Refactor:"):
+                    story_title = f"Refactor: {story_title}"
+            else:
+                story_title = f"Refactor: {refactor_type.title()} Task"
+
+        except Exception as e:
+            logger.error(f"Error generating refactor title: {e}")
+            story_title = f"Refactor: {refactor_type.title()} Task"
+
+        # Convert role names to needs/* labels for immediate creation
+        role_labels = []
+        for role_name in roles_to_consult:
+            role_slug = role_name.replace(" ", "-").lower()
+            role_labels.append(f"needs/{role_slug}")
+
+        # Add refactor-specific labels
+        labels = [
+            "refactor",
+            f"refactor/{refactor_type}",
+            "ready-for-development",
+        ] + role_labels
+
+        # Add repository-specific labels if in multi-repo mode
+        if target_repository_key and self.config.is_multi_repository_mode():
+            repo_config = self.config.multi_repository_config.get_repository(
+                target_repository_key
+            )
+            if repo_config and repo_config.story_labels:
+                labels.extend(repo_config.story_labels)
+
+        logger.info(f"Creating immediate refactor ticket with title: '{story_title}'")
+
+        # Create the GitHub issue directly
+        try:
+            created_issue = self.github_service.create_issue(
+                title=story_title, body=prompt, labels=labels
+            )
+
+            if created_issue:
+                user_story = UserStory(
+                    id=created_issue.number,
+                    title=created_issue.title,
+                    body=created_issue.body or "",
+                    status="ready",  # Immediate ready status
+                    roles_involved=roles_to_consult,
+                    github_url=created_issue.html_url,
+                )
+
+                # Add immediate context comment with file information
+                if relevant_files:
+                    files_comment = (
+                        f"**🔧 Refactor Context**\n\n"
+                        f"**Type**: {refactor_type.title()}\n"
+                        f"**Relevant Files/Patterns**:\n"
+                        + "\n".join(f"- `{file}`" for file in relevant_files)
+                        + f"\n\n**Assigned Roles**: {', '.join(roles_to_consult)}\n\n"
+                        f"This refactor ticket was created immediately and is ready for development. "
+                        f"Review the file patterns above to understand the scope of changes needed."
+                    )
+                    self.github_service.add_comment_to_issue(
+                        created_issue.number, files_comment
+                    )
+
+                logger.info(
+                    f"Successfully created immediate refactor ticket #{created_issue.number}"
+                )
+                return user_story
+            else:
+                logger.error("Failed to create GitHub issue for refactor ticket")
+                return None
+
+        except Exception as e:
+            logger.error(f"Error creating immediate refactor ticket: {e}")
             return None
 
     async def create_multi_repository_stories(

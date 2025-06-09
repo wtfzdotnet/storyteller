@@ -18,3 +18,8 @@ pydantic>=2.0.0
 # Additional utilities that might be used
 requests>=2.31.0
 asyncio-mqtt>=0.13.0
+
+# Development dependencies (code quality tools)
+black>=23.0.0
+flake8>=6.0.0
+isort>=5.12.0

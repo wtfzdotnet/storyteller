@@ -616,6 +616,143 @@ def check_agreement_command(
         raise typer.Exit(code=1)
 
 
+@story_app.command(
+    name="refactor",
+    help="Creates immediate refactor tickets across repositories with relevant file context.",
+)
+def refactor_command(
+    refactor_request: str = typer.Argument(
+        ...,
+        help="Description of the refactor needed (e.g., 'Extract authentication logic into a service')",
+    ),
+    repositories: Optional[List[str]] = typer.Option(
+        None,
+        "--repos",
+        "-r",
+        help="Comma-separated list of repository keys to target (default: all repositories).",
+    ),
+    include_files: Optional[List[str]] = typer.Option(
+        None,
+        "--files",
+        "-f",
+        help="Specific files to include in context (comma-separated paths).",
+    ),
+    refactor_type: str = typer.Option(
+        "general",
+        "--type",
+        "-t",
+        help="Type of refactor: general, extract, move, rename, optimize, modernize.",
+    ),
+    use_repository_prompts: bool = typer.Option(
+        False,
+        "--use-repository-prompts",
+        help="Enable repository-based prompts for GitHub Models.",
+    ),
+):
+    """
+    Creates immediate refactor tickets across repositories with relevant file context.
+    Unlike normal stories, refactor tickets skip the consensus workflow and are created immediately
+    with context about relevant files and roles based on the refactor type.
+    """
+    from config import get_config
+
+    config = get_config()
+
+    if not config.is_multi_repository_mode():
+        typer.secho(
+            "Warning: Multi-repository mode is not enabled. Creating refactor in single repository mode.",
+            fg=typer.colors.YELLOW,
+        )
+
+    orchestrator = _initialize_services()
+    if use_repository_prompts:
+        orchestrator.use_repository_prompts = True
+
+    # Handle repository selection
+    target_repos = repositories
+    if isinstance(target_repos, str):
+        target_repos = [repo.strip() for repo in target_repos.split(",")]
+
+    # Validate repository keys for multi-repository mode
+    if config.is_multi_repository_mode():
+        available_repos = config.get_repository_list()
+        if target_repos:
+            invalid_repos = [
+                repo for repo in target_repos if repo not in available_repos
+            ]
+            if invalid_repos:
+                typer.secho(
+                    f"Error: Unknown repositories: {', '.join(invalid_repos)}",
+                    fg=typer.colors.RED,
+                    err=True,
+                )
+                typer.echo(f"Available repositories: {', '.join(available_repos)}")
+                raise typer.Exit(code=1)
+        else:
+            target_repos = available_repos
+
+    # Handle file inclusions
+    specific_files = include_files
+    if isinstance(specific_files, str):
+        specific_files = [file.strip() for file in specific_files.split(",")]
+
+    logger.info(f"Creating refactor tickets for: {refactor_request}")
+    logger.info(f"Refactor type: {refactor_type}")
+    logger.info(f"Target repositories: {target_repos or ['default']}")
+    if specific_files:
+        logger.info(f"Including specific files: {specific_files}")
+
+    try:
+        results = asyncio.run(
+            orchestrator.create_refactor_tickets(
+                refactor_request, refactor_type, target_repos, specific_files
+            )
+        )
+
+        success_count = sum(1 for ticket in results.values() if ticket is not None)
+
+        if success_count > 0:
+            typer.secho(
+                f"✅ Successfully created {success_count} refactor ticket(s)!",
+                fg=typer.colors.GREEN,
+            )
+            typer.echo("")
+
+            if config.is_multi_repository_mode() and target_repos:
+                for repo_key, ticket in results.items():
+                    if ticket:
+                        repo_config = config.multi_repository_config.get_repository(
+                            repo_key
+                        )
+                        typer.echo(
+                            f"🔧 {repo_key} ({repo_config.name}): #{ticket.id} - {ticket.title}"
+                        )
+                        if ticket.github_url:
+                            typer.echo(f"   🔗 {ticket.github_url}")
+                    else:
+                        typer.echo(f"❌ {repo_key}: Failed to create refactor ticket")
+            else:
+                # Single repository mode
+                for ticket in results.values():
+                    if ticket:
+                        typer.echo(f"🔧 #{ticket.id} - {ticket.title}")
+                        if ticket.github_url:
+                            typer.echo(f"   🔗 {ticket.github_url}")
+                        break
+        else:
+            typer.secho(
+                "Failed to create any refactor tickets. Check logs for details.",
+                fg=typer.colors.RED,
+                err=True,
+            )
+            raise typer.Exit(code=1)
+
+    except Exception as e:
+        logger.error(f"Error during refactor ticket creation: {e}", exc_info=True)
+        typer.secho(f"An error occurred: {e}", fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=1)
+
+
 @story_app.command(name="finalize", help="Summarizes iterations and finalizes a story.")
 def finalize_story_command(
     story_id: int = typer.Argument(

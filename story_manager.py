@@ -989,8 +989,7 @@ if __name__ == "__main__":
 
     from dotenv import load_dotenv
 
-    from ..ai_core.github_handler import \
-        GitHubService  # Relative import for testing
+    from ..ai_core.github_handler import GitHubService  # Relative import for testing
     from ..ai_core.llm_handler import LLMService  # Relative import for testing
 
     # Load .env file from project root

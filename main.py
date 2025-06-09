@@ -3,6 +3,7 @@ import logging
 from typing import List, Optional
 
 import typer
+
 # Attempt to load .env file at the very beginning, before other modules might need it.
 # This is especially important if config.py is not explicitly imported first by all modules.
 from dotenv import load_dotenv
@@ -13,8 +14,7 @@ load_dotenv()  # Loads .env from current directory or parent. If main.py is in a
 
 from github_handler import GitHubService
 from llm_handler import LLMService
-from story_manager import (StoryOrchestrator,  # UserStory for type hinting
-                           UserStory)
+from story_manager import StoryOrchestrator, UserStory  # UserStory for type hinting
 
 # Configure basic logging
 logging.basicConfig(

@@ -8,8 +8,7 @@ import aiohttp
 import ollama
 import openai
 
-from config import (DEFAULT_LLM_PROVIDER, GITHUB_TOKEN, OLLAMA_API_HOST,
-                    OPENAI_API_KEY)
+from config import DEFAULT_LLM_PROVIDER, GITHUB_TOKEN, OLLAMA_API_HOST, OPENAI_API_KEY
 
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"

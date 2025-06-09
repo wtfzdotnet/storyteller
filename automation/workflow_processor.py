@@ -13,12 +13,7 @@ from dotenv import load_dotenv
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from config import get_config
-from github_handler import (
-    GitHubService,
-    add_label_to_issue,
-    get_issue,
-    remove_label_from_issue,
-)
+from github_handler import GitHubService
 from llm_handler import LLMService
 from story_manager import StoryOrchestrator  # For interaction with AI logic
 
@@ -254,9 +249,10 @@ async def apply_label_cleanup_rules(
                     f"[{issue_number}] Removing label '{label_to_remove}' due to cleanup rules."
                 )
                 try:
-                    if github_service.remove_label_from_issue(
+                    result = await github_service.remove_label_from_issue(
                         issue_number, label_to_remove
-                    ):
+                    )
+                    if result.success:
                         if label_to_remove in effective_labels:
                             effective_labels.remove(label_to_remove)
                     else:
@@ -466,7 +462,10 @@ async def execute_auto_actions(
                     role_slug = role_name.replace(" ", "-").lower()
                     role_label = f"needs/{role_slug}"
                     if role_label not in updated_labels:
-                        if add_label_to_issue(issue_number, role_label):
+                        result = await github_service.add_label_to_issue(
+                            issue_number, role_label
+                        )
+                        if result.success:
                             updated_labels.append(role_label)
                             logger.info(
                                 f"[{issue_number}] Added role label: {role_label}"
@@ -486,9 +485,10 @@ async def execute_auto_actions(
                     # Add trigger for reviewing to automatically check consensus after feedback
                     trigger_label = "trigger/consensus-check"
                     if trigger_label not in updated_labels:
-                        if github_service.add_label_to_issue(
+                        result = await github_service.add_label_to_issue(
                             issue_number, trigger_label
-                        ):
+                        )
+                        if result.success:
                             updated_labels.append(trigger_label)
                             logger.info(
                                 f"[{issue_number}] Added trigger for consensus check: {trigger_label}"
@@ -523,7 +523,10 @@ async def execute_auto_actions(
                 )
                 approval_label = "needs/user-approval"
                 if approval_label not in updated_labels:
-                    if github_service.add_label_to_issue(issue_number, approval_label):
+                    result = await github_service.add_label_to_issue(
+                        issue_number, approval_label
+                    )
+                    if result.success:
                         updated_labels.append(approval_label)
                         logger.info(
                             f"[{issue_number}] Added user approval label: {approval_label}"
@@ -607,13 +610,15 @@ async def _transition_to_state(
     for label in current_labels:
         if label.startswith("story/") and label != new_state_label:
             logger.info(f"[{issue_number}] Removing old state label: {label}")
-            if remove_label_from_issue(issue_number, label):
+            result = await github_service.remove_label_from_issue(issue_number, label)
+            if result.success:
                 if label in labels_after_removal:
                     labels_after_removal.remove(label)
     current_labels = labels_after_removal
     if new_state_label not in current_labels:
         logger.info(f"[{issue_number}] Adding new state label: {new_state_label}")
-        if add_label_to_issue(issue_number, new_state_label):
+        result = await github_service.add_label_to_issue(issue_number, new_state_label)
+        if result.success:
             current_labels.append(new_state_label)
     current_labels = await apply_label_cleanup_rules(
         issue_number,
@@ -775,7 +780,10 @@ async def process_story_state(
             )
             labels_to_add.extend(content_labels)
             for label_to_add in list(set(labels_to_add) - set(current_labels)):
-                if github_service.add_label_to_issue(issue_number, label_to_add):
+                result = await github_service.add_label_to_issue(
+                    issue_number, label_to_add
+                )
+                if result.success:
                     current_labels.append(label_to_add)
         else:
             logger.info(
@@ -823,7 +831,10 @@ async def process_story_state(
                 # Add iterate trigger for enriching state
                 trigger_label = "trigger/iterate"
                 if trigger_label not in current_labels:
-                    if github_service.add_label_to_issue(issue_number, trigger_label):
+                    result = await github_service.add_label_to_issue(
+                        issue_number, trigger_label
+                    )
+                    if result.success:
                         current_labels.append(trigger_label)
             else:
                 logger.info(
@@ -856,15 +867,17 @@ async def process_story_state(
                         iteration_label
                         and iteration_label != f"iteration/{next_iteration_num}"
                     ):
-                        if github_service.remove_label_from_issue(
+                        result = await github_service.remove_label_from_issue(
                             issue_number, iteration_label
-                        ):
+                        )
+                        if result.success:
                             current_labels.remove(iteration_label)
                     new_iteration_label = f"iteration/{next_iteration_num}"
                     if new_iteration_label not in current_labels:
-                        if github_service.add_label_to_issue(
+                        result = await github_service.add_label_to_issue(
                             issue_number, new_iteration_label
-                        ):
+                        )
+                        if result.success:
                             current_labels.append(new_iteration_label)
 
                     try:
@@ -892,9 +905,10 @@ async def process_story_state(
                             # Add consensus check trigger
                             consensus_trigger_label = "trigger/consensus-check"
                             if consensus_trigger_label not in current_labels:
-                                if github_service.add_label_to_issue(
+                                result = await github_service.add_label_to_issue(
                                     issue_number, consensus_trigger_label
-                                ):
+                                )
+                                if result.success:
                                     current_labels.append(consensus_trigger_label)
                         else:
                             logger.info(
@@ -920,9 +934,10 @@ async def process_story_state(
                     )
 
                 if trigger_iterate_label in current_labels:  # Cleanup trigger
-                    if github_service.remove_label_from_issue(
+                    result = await github_service.remove_label_from_issue(
                         issue_number, trigger_iterate_label
-                    ):
+                    )
+                    if result.success:
                         current_labels.remove(trigger_iterate_label)
                     logger.info(
                         f"[{issue_number}] Removed '{trigger_iterate_label}' label."
@@ -955,21 +970,26 @@ async def process_story_state(
 
                 old_consensus_label = await get_current_consensus_label(current_labels)
                 if old_consensus_label:
-                    if github_service.remove_label_from_issue(
+                    result = await github_service.remove_label_from_issue(
                         issue_number, old_consensus_label
-                    ):
+                    )
+                    if result.success:
                         current_labels.remove(old_consensus_label)
                 new_consensus_label = get_consensus_label_from_score(consensus_score)
-                if github_service.add_label_to_issue(issue_number, new_consensus_label):
+                result = await github_service.add_label_to_issue(
+                    issue_number, new_consensus_label
+                )
+                if result.success:
                     current_labels.append(new_consensus_label)
                 logger.info(
                     f"[{issue_number}] Applied consensus label: {new_consensus_label}"
                 )
 
                 if trigger_consensus_check_label in current_labels:
-                    if github_service.remove_label_from_issue(
+                    result = await github_service.remove_label_from_issue(
                         issue_number, trigger_consensus_check_label
-                    ):
+                    )
+                    if result.success:
                         current_labels.remove(trigger_consensus_check_label)
                     logger.info(
                         f"[{issue_number}] Removed '{trigger_consensus_check_label}' label."
@@ -1031,9 +1051,10 @@ async def process_story_state(
                             # Add iterate trigger for automatic iteration
                             iterate_trigger_label = "trigger/iterate"
                             if iterate_trigger_label not in current_labels:
-                                if github_service.add_label_to_issue(
+                                result = await github_service.add_label_to_issue(
                                     issue_number, iterate_trigger_label
-                                ):
+                                )
+                                if result.success:
                                     current_labels.append(iterate_trigger_label)
                         else:
                             logger.info(

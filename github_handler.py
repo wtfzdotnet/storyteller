@@ -1069,8 +1069,11 @@ def update_issue(
 
 def get_issue_comments(issue_number: int) -> List[IssueComment]:
     """Backwards compatibility function."""
+    import asyncio
+
     service = GitHubService()
-    return service.get_issue_comments(issue_number)
+    result = asyncio.run(service.get_issue_comments(issue_number))
+    return result.data if result.success else []
 
 
 # Example/Test function

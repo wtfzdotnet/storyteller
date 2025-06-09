@@ -681,9 +681,7 @@ Focus on technical implementation details and provide clear guidance for the dev
 
         # Create the GitHub issue directly
         try:
-            created_issue = self.github_service.create_issue(
-                title=story_title, body=prompt, labels=labels
-            )
+            created_issue = create_issue(title=story_title, body=prompt, labels=labels)
 
             if created_issue:
                 user_story = UserStory(
@@ -706,9 +704,7 @@ Focus on technical implementation details and provide clear guidance for the dev
                         f"This refactor ticket was created immediately and is ready for development. "
                         f"Review the file patterns above to understand the scope of changes needed."
                     )
-                    self.github_service.add_comment_to_issue(
-                        created_issue.number, files_comment
-                    )
+                    add_comment_to_issue(created_issue.number, files_comment)
 
                 logger.info(
                     f"Successfully created immediate refactor ticket #{created_issue.number}"
@@ -898,7 +894,7 @@ Focus on technical implementation details and provide clear guidance for the dev
             reference_comment = "**Cross-Repository Dependencies:**\n\n" + "\n".join(
                 references
             )
-            self.github_service.add_comment_to_issue(story.id, reference_comment)
+            add_comment_to_issue(story.id, reference_comment)
 
     async def gather_feedback_and_iterate(
         self, story_id: int, roles_providing_feedback: List[str]
@@ -958,7 +954,7 @@ Focus on technical implementation details and provide clear guidance for the dev
 
                 if feedback_comment_text:
                     comment_body = f"**AI-Generated Feedback from Perspective of {role}**:\n\n{feedback_comment_text}"
-                    self.github_service.add_comment_to_issue(story_id, comment_body)
+                    add_comment_to_issue(story_id, comment_body)
                     current_story_repr.feedback_log.append(
                         {"role": f"{role} (AI)", "comment": feedback_comment_text}
                     )
@@ -1024,7 +1020,7 @@ Focus on technical implementation details and provide clear guidance for the dev
 
             if llm_summary_and_suggestions:
                 # Post LLM's summary and suggestions as a comment for human review
-                self.github_service.add_comment_to_issue(
+                add_comment_to_issue(
                     story_id,
                     f"**AI Suggested Iteration and Feedback Summary**:\n\n{llm_summary_and_suggestions}",
                 )
@@ -1032,7 +1028,7 @@ Focus on technical implementation details and provide clear guidance for the dev
                     "pending_review"  # Or "needs_iteration_review"
                 )
                 # Update labels on GitHub to reflect this status
-                self.github_service.update_issue(
+                update_issue(
                     story_id,
                     labels=["user_story", "pending_review", "ai_suggestions_added"],
                 )
@@ -1052,7 +1048,7 @@ Focus on technical implementation details and provide clear guidance for the dev
 
     def get_story_details(self, story_id: int) -> Optional[UserStory]:
         logger.info(f"Fetching details for story #{story_id}")
-        github_issue = self.github_service.get_issue(story_id)
+        github_issue = get_issue(story_id)
         if not github_issue:
             logger.warning(f"Story #{story_id} not found on GitHub.")
             return None
@@ -1175,7 +1171,7 @@ Focus on technical implementation details and provide clear guidance for the dev
         logger.info(f"Finalizing story #{story_id} with iterations analysis")
 
         # Get the current issue
-        github_issue = self.github_service.get_issue(story_id)
+        github_issue = get_issue(story_id)
         if not github_issue:
             logger.error(f"Story #{story_id} not found on GitHub.")
             return None

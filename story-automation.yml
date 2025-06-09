@@ -1,0 +1,122 @@
+name: User Story Automation
+
+on:
+  issues:
+    types: [labeled, unlabeled, opened, edited]
+  issue_comment:
+    types: [created, edited]
+
+jobs:
+  process_story:
+    name: Process Story Event
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+      issues: write
+      models: read
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
+    - name: Check for Python/Docker changes
+      id: changes
+      uses: dorny/paths-filter@v2
+      with:
+        filters: |
+          ai:
+            - 'ai/**/*.py'
+            - 'ai/requirements.txt'
+            - 'ai/Dockerfile'
+            - 'ai/.dockerignore'
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+      with:
+        driver: docker-container
+        buildkitd-flags: --allow-insecure-entitlement security.insecure
+
+    - name: Convert repository name to lowercase
+      id: lowercase
+      run: |
+        echo "repo_owner=$(echo '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')" >> $GITHUB_OUTPUT
+        echo "repo_name=$(echo '${{ github.repository }}' | tr '[:upper:]' '[:lower:]')" >> $GITHUB_OUTPUT
+
+    - name: Log in to GitHub Container Registry
+      uses: docker/login-action@v3
+      with:
+        registry: ghcr.io
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Build and push AI automation Docker image
+      uses: docker/build-push-action@v5
+      with:
+        context: ./ai
+        file: ./ai/Dockerfile
+        platforms: linux/amd64
+        tags: |
+          ghcr.io/${{ steps.lowercase.outputs.repo_owner }}/ai-automation:latest
+          ghcr.io/${{ steps.lowercase.outputs.repo_owner }}/ai-automation:${{ github.sha }}
+        push: true
+        cache-from: |
+          type=gha
+          type=registry,ref=ghcr.io/${{ steps.lowercase.outputs.repo_owner }}/ai-automation:buildcache
+        cache-to: |
+          type=gha,mode=max
+          type=registry,ref=ghcr.io/${{ steps.lowercase.outputs.repo_owner }}/ai-automation:buildcache,mode=max
+
+    - name: Process Story State Change
+      id: process_story_step
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        DEFAULT_LLM_PROVIDER: "github"
+        GITHUB_REPOSITORY: ${{ github.repository }}
+        # Enable repository-based prompts for GitHub Models
+        # Set this to "true" to use repository documentation as context
+        USE_REPOSITORY_PROMPTS: "true"
+      run: |
+        echo "Issue Number: ${{ github.event.issue.number }}"
+        echo "Event Name: ${{ github.event_name }}"
+        echo "Action: ${{ github.event.action }}"
+        echo "Actor: ${{ github.actor }}"
+        
+        # For labels, ensure it handles cases where labels might be empty or contain special characters.
+        LABELS_STR="${{ join(github.event.issue.labels.*.name, ',') }}"
+        echo "Current Labels: $LABELS_STR"
+        
+        # Construct comment body argument carefully, it might be empty for some events
+        COMMENT_BODY_ARG=""
+        if [[ "${{ github.event_name }}" == "issue_comment" ]]; then
+          # Replace newlines and escape quotes for safe command line passing
+          COMMENT_BODY_ESCAPED=$(printf '%s\n' "${{ github.event.comment.body }}" | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g' -e 's/`/\\`/g' -e 's/\$/\\\$/g' -e 's/%/%%/g' | sed -e ':a' -e 'N' -e '$!ba' -e 's/\n/\\n/g')
+          COMMENT_BODY_ARG="--comment-body \"$COMMENT_BODY_ESCAPED\""
+        fi
+        
+        # Run the AI automation using Docker image from registry
+        echo "Pulling Docker image from GHCR..."
+        docker pull ghcr.io/${{ steps.lowercase.outputs.repo_owner }}/ai-automation:latest
+        
+        echo "Running workflow processor..."
+        docker run --rm \
+          -e GITHUB_TOKEN="${GITHUB_TOKEN}" \
+          -e DEFAULT_LLM_PROVIDER="${DEFAULT_LLM_PROVIDER}" \
+          -e GITHUB_REPOSITORY="${GITHUB_REPOSITORY}" \
+          -e USE_REPOSITORY_PROMPTS="${USE_REPOSITORY_PROMPTS}" \
+          ghcr.io/${{ steps.lowercase.outputs.repo_owner }}/ai-automation:latest \
+          workflow-processor \
+          --issue-number "${{ github.event.issue.number }}" \
+          --trigger-event "${{ github.event_name }}" \
+          --action "${{ github.event.action }}" \
+          --current-labels "$LABELS_STR" \
+          --actor "${{ github.actor }}" \
+          $COMMENT_BODY_ARG \
+          --log-level "INFO"
+
+    # Optional: Add a step to handle failures or specific outputs from the script
+    # - name: Handle script output/failure
+    #   if: failure() && steps.process_story_step.outcome == 'failure'
+    #   run: echo "Story processing script failed." # Or create an issue, send notification etc.

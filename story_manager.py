@@ -4,7 +4,7 @@ from pydantic import BaseModel, Field
 
 from llm_handler import LLMService
 from github_handler import GitHubService, Issue as GitHubIssue # Renamed to avoid clash
-from config import get_config
+from config import get_config, Config
 
 logger = logging.getLogger(__name__)
 

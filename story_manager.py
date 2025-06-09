@@ -2,8 +2,9 @@ import logging
 from typing import Optional, List, Dict, Any
 from pydantic import BaseModel, Field
 
-from .llm_handler import LLMService
-from .github_handler import GitHubService, Issue as GitHubIssue # Renamed to avoid clash
+from llm_handler import LLMService
+from github_handler import GitHubService, Issue as GitHubIssue # Renamed to avoid clash
+from config import get_config
 
 logger = logging.getLogger(__name__)
 
@@ -21,13 +22,16 @@ class UserStory(BaseModel):
         arbitrary_types_allowed = True # To allow GitHubIssue if we decide to use raw_github_issue
 
 class StoryOrchestrator:
-    def __init__(self, llm_service: LLMService, github_service: GitHubService):
+    def __init__(self, llm_service: LLMService, github_service: GitHubService, config: Optional['Config'] = None):
         self.llm_service = llm_service
         self.github_service = github_service
+        self.config = config or get_config()
         self.use_repository_prompts = self._can_use_repository_prompts()
         logger.info("StoryOrchestrator initialized.")
         if self.use_repository_prompts:
             logger.info("Repository-based prompts are enabled for GitHub Models.")
+        if self.config.is_multi_repository_mode():
+            logger.info(f"Multi-repository mode enabled with {len(self.config.get_repository_list())} repositories")
 
     def _can_use_repository_prompts(self):
         """Determine if repository-based prompts can be used"""
@@ -49,6 +53,27 @@ class StoryOrchestrator:
             role_paths.append(role_path)
             
         return role_paths
+
+    def get_available_repositories(self) -> List[str]:
+        """Get list of available repository keys for multi-repository mode."""
+        return self.config.get_repository_list()
+    
+    def get_repository_dependencies(self, repository_key: str) -> List[str]:
+        """Get dependencies for a repository."""
+        if self.config.is_multi_repository_mode():
+            return self.config.multi_repository_config.get_dependencies(repository_key)
+        return []
+    
+    def create_github_service_for_repository(self, repository_key: Optional[str] = None) -> GitHubService:
+        """Create a GitHub service instance for a specific repository."""
+        target_repo = self.config.get_target_repository(repository_key)
+        if not target_repo:
+            raise ValueError(f"No repository found for key: {repository_key}")
+        
+        # Create a new GitHub service instance for the target repository
+        # This assumes GitHubService can be configured with a different repository
+        # We'll need to extend GitHubService to support dynamic repository switching
+        return self.github_service  # For now, return the existing service
 
     def _parse_llm_story_output(self, llm_response: str) -> Dict[str, str]:
         """
@@ -107,11 +132,35 @@ class StoryOrchestrator:
         return {"title": title, "body": body}
 
     async def create_new_story(self, initial_prompt: str, roles_to_consult: List[str], 
-                               target_repo_info: Optional[str] = None) -> Optional[UserStory]:
+                               target_repo_info: Optional[str] = None, 
+                               target_repository_key: Optional[str] = None) -> Optional[UserStory]:
         """
         Creates a new user story using LLM and posts it to GitHub.
+        
+        Args:
+            initial_prompt: The user's request for the story
+            roles_to_consult: List of roles to involve in the story
+            target_repo_info: Optional context about the target repository
+            target_repository_key: Repository key for multi-repository mode
         """
+        # Determine target repository
+        target_repo = self.config.get_target_repository(target_repository_key)
+        if not target_repo:
+            logger.error(f"No target repository found for key: {target_repository_key}")
+            return None
+            
         logger.info(f"Creating new story based on prompt: '{initial_prompt[:50]}...' for roles: {roles_to_consult}")
+        logger.info(f"Target repository: {target_repo}")
+
+        # Build enhanced context for multi-repository mode
+        repo_context = target_repo_info or target_repo
+        if self.config.is_multi_repository_mode() and target_repository_key:
+            repo_config = self.config.multi_repository_config.get_repository(target_repository_key)
+            if repo_config:
+                repo_context = f"{repo_config.description} ({repo_config.type})"
+                dependencies = self.get_repository_dependencies(target_repository_key)
+                if dependencies:
+                    repo_context += f". Dependencies: {', '.join(dependencies)}"
 
         llm_prompt = (
             f"You are a highly experienced Product Owner. Your task is to generate a user story based on the following request:\n"
@@ -124,8 +173,9 @@ class StoryOrchestrator:
             f"Body: As a [specific user type], I want [a specific action/feature] so that [a clear benefit/value].\n\n"
             f"Additional details or acceptance criteria can be added below the main body if necessary, but ensure the primary body is concise."
         )
-        if target_repo_info: # Add repository context if available
-            llm_prompt += f"\n\nThe story will be part of the '{target_repo_info}' project. Keep this context in mind."
+        
+        if repo_context:
+            llm_prompt += f"\n\nThe story will be part of the '{repo_context}' project. Keep this context in mind."
 
         try:
             # If using GitHub Models with repository-based prompts
@@ -185,6 +235,141 @@ class StoryOrchestrator:
         except Exception as e:
             logger.error(f"Error in create_new_story: {e}", exc_info=True)
             return None
+
+    async def create_multi_repository_stories(self, initial_prompt: str, roles_to_consult: List[str], 
+                                            target_repositories: Optional[List[str]] = None) -> Dict[str, Optional[UserStory]]:
+        """
+        Creates user stories across multiple repositories with dependency awareness.
+        
+        Args:
+            initial_prompt: The user's request for the story
+            roles_to_consult: List of roles to involve in the stories
+            target_repositories: List of repository keys to target (None = all repositories)
+        
+        Returns:
+            Dictionary mapping repository keys to created UserStory objects
+        """
+        if not self.config.is_multi_repository_mode():
+            logger.warning("Multi-repository mode not enabled, falling back to single repository")
+            single_story = await self.create_new_story(initial_prompt, roles_to_consult)
+            return {"default": single_story}
+        
+        # Determine target repositories
+        if target_repositories is None:
+            target_repositories = self.config.get_repository_list()
+        
+        results = {}
+        logger.info(f"Creating stories across repositories: {target_repositories}")
+        
+        # Sort repositories by dependencies (dependencies first)
+        sorted_repos = self._sort_repositories_by_dependencies(target_repositories)
+        
+        for repo_key in sorted_repos:
+            repo_config = self.config.multi_repository_config.get_repository(repo_key)
+            if not repo_config:
+                logger.warning(f"Repository configuration not found for key: {repo_key}")
+                results[repo_key] = None
+                continue
+            
+            # Customize prompt based on repository type and dependencies
+            repo_specific_prompt = self._customize_prompt_for_repository(
+                initial_prompt, repo_key, repo_config, results
+            )
+            
+            try:
+                story = await self.create_new_story(
+                    repo_specific_prompt, 
+                    roles_to_consult, 
+                    target_repository_key=repo_key
+                )
+                results[repo_key] = story
+                
+                if story:
+                    logger.info(f"Created story #{story.id} in repository {repo_config.name}")
+                    # Add cross-repository references
+                    await self._add_cross_repository_references(story, repo_key, results)
+                else:
+                    logger.error(f"Failed to create story in repository {repo_config.name}")
+                    
+            except Exception as e:
+                logger.error(f"Error creating story in repository {repo_key}: {e}")
+                results[repo_key] = None
+        
+        return results
+    
+    def _sort_repositories_by_dependencies(self, repository_keys: List[str]) -> List[str]:
+        """Sort repositories by dependencies (dependencies first)."""
+        sorted_repos = []
+        remaining_repos = repository_keys.copy()
+        
+        while remaining_repos:
+            # Find repositories with no unresolved dependencies
+            ready_repos = []
+            for repo_key in remaining_repos:
+                dependencies = self.get_repository_dependencies(repo_key)
+                # Check if all dependencies are already processed or not in target list
+                if all(dep not in remaining_repos or dep in sorted_repos for dep in dependencies):
+                    ready_repos.append(repo_key)
+            
+            if not ready_repos:
+                # Circular dependency or missing dependency - just add remaining
+                logger.warning(f"Potential circular dependencies detected, adding remaining repos: {remaining_repos}")
+                sorted_repos.extend(remaining_repos)
+                break
+            
+            # Add ready repositories
+            sorted_repos.extend(ready_repos)
+            for repo in ready_repos:
+                remaining_repos.remove(repo)
+        
+        return sorted_repos
+    
+    def _customize_prompt_for_repository(self, original_prompt: str, repo_key: str, 
+                                       repo_config, existing_results: Dict[str, Optional[UserStory]]) -> str:
+        """Customize the prompt based on repository type and existing stories."""
+        dependencies = self.get_repository_dependencies(repo_key)
+        
+        customized_prompt = f"{original_prompt}\n\n"
+        customized_prompt += f"Focus on the {repo_config.type} aspects of this request."
+        
+        if dependencies:
+            dependency_context = []
+            for dep in dependencies:
+                if dep in existing_results and existing_results[dep]:
+                    story = existing_results[dep]
+                    dependency_context.append(f"- {dep}: {story.title} (#{story.id})")
+                else:
+                    dependency_context.append(f"- {dep}: (will be implemented separately)")
+            
+            if dependency_context:
+                customized_prompt += f"\n\nThis story depends on the following components:\n"
+                customized_prompt += "\n".join(dependency_context)
+        
+        return customized_prompt
+    
+    async def _add_cross_repository_references(self, story: UserStory, repo_key: str, 
+                                             all_results: Dict[str, Optional[UserStory]]):
+        """Add references to related stories in other repositories."""
+        if not story or not story.id:
+            return
+        
+        references = []
+        dependencies = self.get_repository_dependencies(repo_key)
+        
+        for dep in dependencies:
+            if dep in all_results and all_results[dep]:
+                dep_story = all_results[dep]
+                references.append(f"- Depends on: {dep_story.title} (#{dep_story.id}) in {dep} repository")
+        
+        # Add references to stories that depend on this one
+        for other_repo, other_story in all_results.items():
+            if (other_repo != repo_key and other_story and 
+                repo_key in self.get_repository_dependencies(other_repo)):
+                references.append(f"- Required by: {other_story.title} (#{other_story.id}) in {other_repo} repository")
+        
+        if references:
+            reference_comment = "**Cross-Repository Dependencies:**\n\n" + "\n".join(references)
+            self.github_service.add_comment_to_issue(story.id, reference_comment)
 
     async def gather_feedback_and_iterate(self, story_id: int, roles_providing_feedback: List[str]) -> Optional[UserStory]:
         logger.info(f"Gathering feedback for story #{story_id} from roles: {roles_providing_feedback}")

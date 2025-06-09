@@ -10,9 +10,9 @@ load_dotenv() # Loads .env from current directory or parent. If main.py is in ai
 # For robustness, specify path if needed: load_dotenv(dotenv_path=os.path.join(os.path.dirname(__file__), '..', '..', '.env'))
 
 
-from ai_core.llm_handler import LLMService
-from ai_core.github_handler import GitHubService
-from ai_core.story_manager import StoryOrchestrator, UserStory # UserStory for type hinting
+from llm_handler import LLMService
+from github_handler import GitHubService
+from story_manager import StoryOrchestrator, UserStory # UserStory for type hinting
 
 # Configure basic logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -60,6 +60,138 @@ DEFAULT_ROLES_TO_CONSULT = ["Product Owner", "Lead Developer", "QA Engineer"]
 DEFAULT_ROLES_FOR_FEEDBACK = ["Technical Lead", "UX Designer", "Product Owner"]
 
 
+@story_app.command(name="list-repositories", help="List available repositories in multi-repository mode.")
+def list_repositories_command():
+    """
+    List all available repositories configured in .storyteller/config.json.
+    Shows repository types, descriptions, and dependencies.
+    """
+    from config import get_config
+    
+    config = get_config()
+    
+    if not config.is_multi_repository_mode():
+        typer.secho("Multi-repository mode is not enabled.", fg=typer.colors.YELLOW)
+        typer.echo(f"Current single repository: {config.github_repository}")
+        typer.echo("\nTo enable multi-repository mode, create a .storyteller/config.json file.")
+        return
+    
+    typer.secho("📁 Available Repositories:", fg=typer.colors.BLUE, bold=True)
+    typer.echo("")
+    
+    for key, repo_config in config.multi_repository_config.repositories.items():
+        is_default = key == config.multi_repository_config.default_repository
+        marker = "⭐ " if is_default else "   "
+        
+        typer.secho(f"{marker}{key}", fg=typer.colors.GREEN, bold=True)
+        typer.echo(f"   Repository: {repo_config.name}")
+        typer.echo(f"   Type: {repo_config.type}")
+        typer.echo(f"   Description: {repo_config.description}")
+        
+        if repo_config.dependencies:
+            typer.echo(f"   Dependencies: {', '.join(repo_config.dependencies)}")
+        else:
+            typer.echo("   Dependencies: None")
+            
+        if repo_config.story_labels:
+            typer.echo(f"   Default Labels: {', '.join(repo_config.story_labels)}")
+        
+        typer.echo("")
+    
+    if config.multi_repository_config.default_repository:
+        typer.secho(f"⭐ Default repository: {config.multi_repository_config.default_repository}", 
+                   fg=typer.colors.CYAN)
+
+
+@story_app.command(name="create-multi", help="Creates user stories across multiple repositories.")
+def create_multi_repository_stories_command(
+    initial_prompt: str = typer.Argument(..., help="The initial idea or requirement for the user stories."),
+    repositories: Optional[List[str]] = typer.Option(
+        None, "--repos", "-r",
+        help="Comma-separated list of repository keys to target (default: all repositories)."
+    ),
+    roles_to_consult: Optional[List[str]] = typer.Option(
+        None, "--roles", 
+        help="Comma-separated list of roles to consult (default: standard roles)."
+    ),
+    use_repository_prompts: bool = typer.Option(
+        False, "--use-repository-prompts", 
+        help="Enable repository-based prompts for GitHub Models."
+    )
+):
+    """
+    Creates user stories across multiple repositories with dependency awareness.
+    Stories are created in dependency order (backend before frontend, etc.).
+    Cross-repository references are automatically added to link related stories.
+    """
+    from config import get_config
+    
+    config = get_config()
+    
+    if not config.is_multi_repository_mode():
+        typer.secho("Error: Multi-repository mode is not enabled.", fg=typer.colors.RED, err=True)
+        typer.echo("Create a .storyteller/config.json file to enable multi-repository mode.")
+        raise typer.Exit(code=1)
+    
+    orchestrator = _initialize_services()
+    if use_repository_prompts:
+        orchestrator.use_repository_prompts = True
+
+    # Handle repository selection
+    target_repos = repositories
+    if isinstance(target_repos, str):
+        target_repos = [repo.strip() for repo in target_repos.split(',')]
+    
+    # Validate repository keys
+    available_repos = config.get_repository_list()
+    if target_repos:
+        invalid_repos = [repo for repo in target_repos if repo not in available_repos]
+        if invalid_repos:
+            typer.secho(f"Error: Unknown repositories: {', '.join(invalid_repos)}", fg=typer.colors.RED, err=True)
+            typer.echo(f"Available repositories: {', '.join(available_repos)}")
+            raise typer.Exit(code=1)
+    else:
+        target_repos = available_repos
+
+    # Handle roles
+    actual_roles = roles_to_consult if roles_to_consult else DEFAULT_ROLES_TO_CONSULT
+    if isinstance(actual_roles, str):
+        actual_roles = [role.strip() for role in actual_roles.split(',')]
+
+    logger.info(f"Creating multi-repository stories for repositories: {target_repos}")
+    typer.echo(f"Creating stories across {len(target_repos)} repositories...")
+
+    try:
+        results = asyncio.run(
+            orchestrator.create_multi_repository_stories(
+                initial_prompt, actual_roles, target_repos
+            )
+        )
+        
+        success_count = sum(1 for story in results.values() if story is not None)
+        
+        if success_count > 0:
+            typer.secho(f"✅ Successfully created {success_count}/{len(target_repos)} stories!", fg=typer.colors.GREEN)
+            typer.echo("")
+            
+            for repo_key, story in results.items():
+                if story:
+                    repo_config = config.multi_repository_config.get_repository(repo_key)
+                    typer.echo(f"📝 {repo_key} ({repo_config.name}): #{story.id} - {story.title}")
+                    if story.github_url:
+                        typer.echo(f"   🔗 {story.github_url}")
+                else:
+                    typer.echo(f"❌ {repo_key}: Failed to create story")
+        else:
+            typer.secho("Failed to create any stories. Check logs for details.", fg=typer.colors.RED, err=True)
+            raise typer.Exit(code=1)
+            
+    except Exception as e:
+        logger.error(f"Error during multi-repository story creation: {e}", exc_info=True)
+        typer.secho(f"An error occurred: {e}", fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=1)
+
+
 @story_app.command(name="create", help="Creates a new user story using AI and posts it to GitHub.")
 def create_story_command(
     initial_prompt: str = typer.Argument(..., help="The initial idea or requirement for the user story."),
@@ -68,15 +200,22 @@ def create_story_command(
         help="Comma-separated list of roles to consult (e.g., ProductOwner,LeadDeveloper). Overrides default."
     ),
     target_repo_info: Optional[str] = typer.Option(None, "--repo-context", help="Optional context about the target repository for the LLM."),
+    repository: Optional[str] = typer.Option(
+        None, "--repository", 
+        help="Target repository key (for multi-repository mode). Uses default if not specified."
+    ),
     use_repository_prompts: bool = typer.Option(
         False, "--use-repository-prompts", help="Enable repository-based prompts for GitHub Models (uses AI.md and role docs as context)."
     )
 ):
     """
     Generates a new user story from an initial prompt, considering specified roles,
-    and creates an issue on GitHub.
+    and creates an issue on GitHub. Supports both single and multi-repository modes.
     If --use-repository-prompts is enabled, the LLM will use repository documentation (AI.md and role docs) as context.
     """
+    from config import get_config
+    
+    config = get_config()
     orchestrator = _initialize_services()
     if use_repository_prompts:
         orchestrator.use_repository_prompts = True
@@ -87,15 +226,31 @@ def create_story_command(
     elif actual_roles is None: # Ensure it's a list for the orchestrator
         actual_roles = DEFAULT_ROLES_TO_CONSULT
 
+    # Validate repository key for multi-repository mode
+    if repository and config.is_multi_repository_mode():
+        available_repos = config.get_repository_list()
+        if repository not in available_repos:
+            typer.secho(f"Error: Unknown repository '{repository}'", fg=typer.colors.RED, err=True)
+            typer.echo(f"Available repositories: {', '.join(available_repos)}")
+            raise typer.Exit(code=1)
 
     logger.info(f"Executing create_story_command with prompt: '{initial_prompt}', roles: {actual_roles}")
+    if repository:
+        logger.info(f"Target repository: {repository}")
     
     try:
-        story = asyncio.run(orchestrator.create_new_story(initial_prompt, actual_roles, target_repo_info))
+        story = asyncio.run(orchestrator.create_new_story(
+            initial_prompt, actual_roles, target_repo_info, repository
+        ))
         if story and story.id:
             typer.secho(f"User story #{story.id} created successfully!", fg=typer.colors.GREEN)
             typer.echo(f"Title: {story.title}")
             typer.echo(f"URL: {story.github_url if story.github_url else 'N/A'}")
+            
+            if config.is_multi_repository_mode() and repository:
+                repo_config = config.multi_repository_config.get_repository(repository)
+                if repo_config:
+                    typer.echo(f"Repository: {repo_config.name} ({repo_config.type})")
         else:
             typer.secho("Failed to create user story. Check logs for details.", fg=typer.colors.RED, err=True)
             raise typer.Exit(code=1)

@@ -7,7 +7,7 @@ from dataclasses import dataclass
 import github
 from github import GithubException, UnknownObjectException, Issue, IssueComment
 
-from .config import get_config, Config
+from config import get_config, Config
 
 logger = logging.getLogger(__name__)
 

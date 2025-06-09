@@ -81,6 +81,7 @@ jobs:
           -e DEFAULT_LLM_PROVIDER="${DEFAULT_LLM_PROVIDER}" \
           -e GITHUB_REPOSITORY="${GITHUB_REPOSITORY}" \
           -e USE_REPOSITORY_PROMPTS="${USE_REPOSITORY_PROMPTS}" \
+          -e AUTO_CONSENSUS_ENABLED="true" \
           "$DOCKER_IMAGE" \
           workflow-processor \
           --issue-number "${{ github.event.issue.number }}" \

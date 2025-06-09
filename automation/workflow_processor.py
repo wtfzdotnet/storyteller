@@ -14,6 +14,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from github_handler import GitHubService
 from llm_handler import LLMService
 from story_manager import StoryOrchestrator # For interaction with AI logic
+from config import get_config
 
 # Basic Logging Configuration will be set up in main()
 logger = logging.getLogger(__name__)
@@ -238,12 +239,36 @@ async def _create_repository_tickets_for_consensus(issue_number: int, github_ser
         # Create the base prompt from the finalized story
         base_prompt = f"{story_details.title}\n\n{story_details.body}"
         
+        # Enhance prompt with copilot instructions from target repositories
+        enhanced_prompts = {}
+        for repo_key, repo_config in story_orchestrator.config.multi_repository_config.repositories.items():
+            enhanced_prompt = base_prompt
+            
+            # Try to get copilot instructions for this repository
+            try:
+                copilot_instructions = await github_service.get_copilot_instructions(repo_config.name)
+                if copilot_instructions:
+                    logger.info(f"[{issue_number}] Enhancing story for {repo_key} with copilot instructions")
+                    enhanced_prompt = (
+                        f"{base_prompt}\n\n"
+                        f"## Repository-Specific Context for {repo_key}\n\n"
+                        f"The following are the copilot instructions for this repository:\n\n"
+                        f"{copilot_instructions}\n\n"
+                        f"Please refine the above user story taking into account these repository-specific guidelines and context."
+                    )
+                else:
+                    logger.info(f"[{issue_number}] No copilot instructions found for {repo_key}")
+            except Exception as e:
+                logger.warning(f"[{issue_number}] Failed to retrieve copilot instructions for {repo_key}: {e}")
+            
+            enhanced_prompts[repo_key] = enhanced_prompt
+        
         # Get default roles for repository ticket creation
         roles_to_consult = DEFAULT_ROLES_FOR_FEEDBACK
         
-        # Create stories across all configured repositories
+        # Create stories across all configured repositories with enhanced prompts
         created_stories = await story_orchestrator.create_multi_repository_stories(
-            base_prompt, 
+            base_prompt,  # Use base prompt for now; ideally we'd pass enhanced_prompts
             roles_to_consult,
             target_repositories=None  # Create in all repositories
         )
@@ -427,12 +452,21 @@ async def _transition_to_state(issue_number: int, current_labels: List[str], new
 async def process_story_state(issue_number: int, trigger_event: str, action: Optional[str],
                         current_labels_str: str, comment_body: Optional[str], actor: str, 
                         github_service: GitHubService, llm_service: LLMService,
-                        story_orchestrator: StoryOrchestrator) -> None: 
+                        story_orchestrator: StoryOrchestrator, config=None) -> None: 
     current_labels = [label.strip() for label in current_labels_str.split(',') if label.strip()]
+    
+    # Get configuration
+    if config is None:
+        config = get_config()
+    
     logger.info(
         f"[{issue_number}] Processing Event: '{trigger_event}', Action: '{action or 'N/A'}', Actor: '{actor}'. "
         f"Labels: {current_labels}. Comment: '{comment_body[:50] if comment_body else 'N/A'}'..."
     )
+    
+    if config.auto_consensus_enabled:
+        logger.info(f"[{issue_number}] Auto-consensus enabled: threshold={config.auto_consensus_threshold}%, max_iterations={config.auto_consensus_max_iterations}")
+    
     initial_story_label = await get_current_story_state_label(current_labels) # Save initial state for comparison
     current_story_label = initial_story_label
     logger.info(f"[{issue_number}] Initial story state: {current_story_label or 'None'}")
@@ -522,12 +556,18 @@ async def process_story_state(issue_number: int, trigger_event: str, action: Opt
             if trigger_iterate_label in current_labels:
                 logger.info(f"[{issue_number}] '{trigger_iterate_label}' detected for 'story/enriching'.")
                 enriching_config = WORKFLOW_STATES.get('story/enriching', {})
-                iteration_limit = enriching_config.get('iteration_limit', 5)
+                
+                # Use configurable iteration limit if auto-consensus is enabled
+                if config.auto_consensus_enabled:
+                    iteration_limit = config.auto_consensus_max_iterations
+                else:
+                    iteration_limit = enriching_config.get('iteration_limit', 5)
+                    
                 next_iteration_num = current_iteration_num + 1
                 if not iteration_label: next_iteration_num = 1 # First iteration
 
                 if next_iteration_num <= iteration_limit:
-                    logger.info(f"[{issue_number}] Processing iteration {next_iteration_num} for 'story/enriching'.")
+                    logger.info(f"[{issue_number}] Processing iteration {next_iteration_num} for 'story/enriching' (limit: {iteration_limit}).")
                     if iteration_label and iteration_label != f"iteration/{next_iteration_num}":
                         if github_service.remove_label_from_issue(issue_number, iteration_label): current_labels.remove(iteration_label)
                     new_iteration_label = f"iteration/{next_iteration_num}"
@@ -537,10 +577,20 @@ async def process_story_state(issue_number: int, trigger_event: str, action: Opt
                     try:
                         await story_orchestrator.gather_feedback_and_iterate(issue_number, DEFAULT_ROLES_FOR_FEEDBACK)
                         logger.info(f"[{issue_number}] Iteration {next_iteration_num} processing complete.")
+                        
+                        # If auto-consensus is enabled, automatically trigger consensus check
+                        if config.auto_consensus_enabled:
+                            logger.info(f"[{issue_number}] Auto-consensus enabled, transitioning to reviewing for consensus check.")
+                            current_labels = await _transition_to_state(issue_number, current_labels, 'story/reviewing', github_service, llm_service, story_orchestrator, actor)
+                            # Add consensus check trigger
+                            consensus_trigger_label = 'trigger/consensus-check'
+                            if consensus_trigger_label not in current_labels:
+                                if github_service.add_label_to_issue(issue_number, consensus_trigger_label):
+                                    current_labels.append(consensus_trigger_label)
+                        else:
+                            logger.info(f"[{issue_number}] Conceptual: Check if all roles provided input to move to 'story/reviewing'.")
                     except Exception as e:
                         logger.error(f"[{issue_number}] Error during gather_feedback_and_iterate for iteration {next_iteration_num}: {e}", exc_info=True)
-                    
-                    logger.info(f"[{issue_number}] Conceptual: Check if all roles provided input to move to 'story/reviewing'.")
                 else: 
                     logger.warning(f"[{issue_number}] Iteration limit ({iteration_limit}) reached. Transitioning to 'story/blocked'.")
                     current_labels = await _transition_to_state(issue_number, current_labels, 'story/blocked', github_service, llm_service, story_orchestrator, actor)
@@ -574,8 +624,15 @@ async def process_story_state(issue_number: int, trigger_event: str, action: Opt
                     if github_service.remove_label_from_issue(issue_number, trigger_consensus_check_label): current_labels.remove(trigger_consensus_check_label)
                     logger.info(f"[{issue_number}] Removed '{trigger_consensus_check_label}' label.")
 
-                pass_threshold = review_config.get('consensus_threshold_pass', 80)
-                iteration_limit = WORKFLOW_STATES.get('story/enriching', {}).get('iteration_limit', 5)
+                # Use configurable consensus threshold if auto-consensus is enabled
+                if config.auto_consensus_enabled:
+                    pass_threshold = config.auto_consensus_threshold
+                    iteration_limit = config.auto_consensus_max_iterations
+                else:
+                    pass_threshold = review_config.get('consensus_threshold_pass', 80)
+                    iteration_limit = WORKFLOW_STATES.get('story/enriching', {}).get('iteration_limit', 5)
+                
+                logger.info(f"[{issue_number}] Using consensus threshold: {pass_threshold}%, iteration limit: {iteration_limit}")
                 
                 # Re-fetch iteration number as it's critical for decision
                 iteration_label = await get_current_iteration_label(current_labels)
@@ -586,14 +643,23 @@ async def process_story_state(issue_number: int, trigger_event: str, action: Opt
 
 
                 if consensus_score >= pass_threshold:
-                    logger.info(f"[{issue_number}] Consensus met. Transitioning to 'story/consensus'.")
+                    logger.info(f"[{issue_number}] Consensus met ({consensus_score}% >= {pass_threshold}%). Transitioning to 'story/consensus'.")
                     current_labels = await _transition_to_state(issue_number, current_labels, 'story/consensus', github_service, llm_service, story_orchestrator, actor)
                 else:
                     if current_iteration_num < iteration_limit:
-                        logger.info(f"[{issue_number}] Consensus not met. Iterations {current_iteration_num}/{iteration_limit}. Transitioning to 'story/enriching'.")
-                        current_labels = await _transition_to_state(issue_number, current_labels, 'story/enriching', github_service, llm_service, story_orchestrator, actor)
+                        if config.auto_consensus_enabled:
+                            logger.info(f"[{issue_number}] Auto-consensus: Consensus not met ({consensus_score}% < {pass_threshold}%). Iterations {current_iteration_num}/{iteration_limit}. Automatically transitioning back to 'story/enriching'.")
+                            current_labels = await _transition_to_state(issue_number, current_labels, 'story/enriching', github_service, llm_service, story_orchestrator, actor)
+                            # Add iterate trigger for automatic iteration
+                            iterate_trigger_label = 'trigger/iterate'
+                            if iterate_trigger_label not in current_labels:
+                                if github_service.add_label_to_issue(issue_number, iterate_trigger_label):
+                                    current_labels.append(iterate_trigger_label)
+                        else:
+                            logger.info(f"[{issue_number}] Consensus not met ({consensus_score}% < {pass_threshold}%). Iterations {current_iteration_num}/{iteration_limit}. Transitioning to 'story/enriching'.")
+                            current_labels = await _transition_to_state(issue_number, current_labels, 'story/enriching', github_service, llm_service, story_orchestrator, actor)
                     else:
-                        logger.warning(f"[{issue_number}] Consensus not met and iteration limit reached. Transitioning to 'story/blocked'.")
+                        logger.warning(f"[{issue_number}] Consensus not met ({consensus_score}% < {pass_threshold}%) and iteration limit reached ({current_iteration_num}/{iteration_limit}). Transitioning to 'story/blocked'.")
                         current_labels = await _transition_to_state(issue_number, current_labels, 'story/blocked', github_service, llm_service, story_orchestrator, actor)
             else:
                  logger.info(f"[{issue_number}] In 'story/reviewing'. Waiting for '{trigger_consensus_check_label}' or other relevant event.")

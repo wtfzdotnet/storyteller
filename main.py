@@ -248,6 +248,15 @@ def create_story_command(
     ),
     use_repository_prompts: bool = typer.Option(
         False, "--use-repository-prompts", help="Enable repository-based prompts for GitHub Models (uses AI.md and role docs as context)."
+    ),
+    auto_consensus: bool = typer.Option(
+        False, "--auto-consensus", help="Enable automatic consensus iteration without manual intervention."
+    ),
+    consensus_threshold: Optional[int] = typer.Option(
+        None, "--consensus-threshold", help="Consensus threshold percentage (1-100). Default: 70 for auto-consensus, 80 otherwise."
+    ),
+    max_iterations: Optional[int] = typer.Option(
+        None, "--max-iterations", help="Maximum iterations before stopping. Default: 10 for auto-consensus, 5 otherwise."
     )
 ):
     """
@@ -258,6 +267,15 @@ def create_story_command(
     from config import get_config
     
     config = get_config()
+    
+    # Override config with command-line flags
+    if auto_consensus:
+        config.auto_consensus_enabled = True
+    if consensus_threshold is not None:
+        config.auto_consensus_threshold = consensus_threshold
+    if max_iterations is not None:
+        config.auto_consensus_max_iterations = max_iterations
+    
     orchestrator = _initialize_services()
     if use_repository_prompts:
         orchestrator.use_repository_prompts = True
@@ -348,6 +366,15 @@ def iterate_story_command(
     ),
     use_repository_prompts: bool = typer.Option(
         False, "--use-repository-prompts", help="Enable repository-based prompts for GitHub Models (uses AI.md and role docs as context)."
+    ),
+    auto_consensus: bool = typer.Option(
+        False, "--auto-consensus", help="Enable automatic consensus iteration without manual intervention."
+    ),
+    consensus_threshold: Optional[int] = typer.Option(
+        None, "--consensus-threshold", help="Consensus threshold percentage (1-100). Default: 70 for auto-consensus, 80 otherwise."
+    ),
+    max_iterations: Optional[int] = typer.Option(
+        None, "--max-iterations", help="Maximum iterations before stopping. Default: 10 for auto-consensus, 5 otherwise."
     )
 ):
     """
@@ -355,6 +382,18 @@ def iterate_story_command(
     The AI will then summarize this feedback and suggest modifications, posting all as comments on GitHub.
     If --use-repository-prompts is enabled, the LLM will use repository documentation (AI.md and role docs) as context.
     """
+    from config import get_config
+    
+    config = get_config()
+    
+    # Override config with command-line flags
+    if auto_consensus:
+        config.auto_consensus_enabled = True
+    if consensus_threshold is not None:
+        config.auto_consensus_threshold = consensus_threshold
+    if max_iterations is not None:
+        config.auto_consensus_max_iterations = max_iterations
+    
     orchestrator = _initialize_services()
     if use_repository_prompts:
         orchestrator.use_repository_prompts = True
@@ -632,7 +671,7 @@ def workflow_processor_command(
 ):
     """Process GitHub issue events for story lifecycle automation."""
     import asyncio
-    from ai_core.automation.workflow_processor import process_story_state
+    from automation.workflow_processor import process_story_state
     
     # Set up logging
     effective_log_level = getattr(logging, log_level.upper(), logging.INFO)
@@ -647,6 +686,9 @@ def workflow_processor_command(
     
     async def run_processor():
         try:
+            from config import get_config
+            config = get_config()
+            
             orchestrator = _initialize_services()
             github_service = orchestrator.github_service
             llm_service = orchestrator.llm_service
@@ -660,7 +702,8 @@ def workflow_processor_command(
                 actor=actor,
                 github_service=github_service,
                 llm_service=llm_service,
-                story_orchestrator=orchestrator
+                story_orchestrator=orchestrator,
+                config=config
             )
         except Exception as e:
             logger.error(f"[{issue_number}] Unhandled error in process_story_state: {e}", exc_info=True)

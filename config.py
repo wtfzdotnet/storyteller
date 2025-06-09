@@ -72,6 +72,11 @@ class Config:
     max_retries: int = 3
     timeout_seconds: int = 30
     
+    # Auto-consensus Configuration
+    auto_consensus_enabled: bool = False
+    auto_consensus_threshold: int = 70  # Default consensus threshold when auto-consensus is enabled
+    auto_consensus_max_iterations: int = 10  # Max iterations before giving up
+    
     def __post_init__(self):
         """Validate configuration after initialization."""
         self._validate_required_fields()
@@ -206,7 +211,10 @@ class Config:
             default_llm_provider=os.getenv('DEFAULT_LLM_PROVIDER', 'github').lower(),
             log_level=os.getenv('LOG_LEVEL', 'INFO').upper(),
             max_retries=int(os.getenv('MAX_RETRIES', '3')),
-            timeout_seconds=int(os.getenv('TIMEOUT_SECONDS', '30'))
+            timeout_seconds=int(os.getenv('TIMEOUT_SECONDS', '30')),
+            auto_consensus_enabled=os.getenv('AUTO_CONSENSUS_ENABLED', 'false').lower() == 'true',
+            auto_consensus_threshold=int(os.getenv('AUTO_CONSENSUS_THRESHOLD', '70')),
+            auto_consensus_max_iterations=int(os.getenv('AUTO_CONSENSUS_MAX_ITERATIONS', '10'))
         )
     
     def to_dict(self) -> Dict[str, Any]:
@@ -220,6 +228,9 @@ class Config:
             'log_level': self.log_level,
             'max_retries': self.max_retries,
             'timeout_seconds': self.timeout_seconds,
+            'auto_consensus_enabled': self.auto_consensus_enabled,
+            'auto_consensus_threshold': self.auto_consensus_threshold,
+            'auto_consensus_max_iterations': self.auto_consensus_max_iterations,
             'multi_repository_mode': self.is_multi_repository_mode(),
         }
         

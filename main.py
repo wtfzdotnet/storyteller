@@ -321,7 +321,7 @@ def create_story_command(
     Generates a new user story from an initial prompt, considering specified roles,
     and creates an issue on GitHub. Supports both single and multi-repository modes.
     If --use-repository-prompts is enabled, the LLM will use repository documentation (AI.md and role docs) as context.
-    
+
     The simplified version creates complete, actionable stories directly without GitHub iteration.
     """
     from config import get_config

@@ -177,46 +177,44 @@ class StoryOrchestrator:
     ) -> Optional[UserStory]:
         """
         Creates a complete, actionable user story using local AI processing.
-        
+
         This simplified approach does all refinement locally before creating the GitHub issue,
         resulting in a ready-to-implement story without iteration on GitHub.
-        
+
         Args:
             initial_prompt: The user's initial idea or requirement
             roles_to_consult: List of roles to consider perspectives from
             target_repo_info: Optional repository context
             repository: Target repository key for multi-repository mode
-            
+
         Returns:
             UserStory object with GitHub issue created, or None if failed
         """
         logger.info(f"Creating complete story from prompt: '{initial_prompt}'")
         logger.info(f"Consulting roles: {roles_to_consult}")
-        
+
         # Track roles for reporting
         self._last_consulted_roles = roles_to_consult
-        
+
         # Local story refinement - gather perspectives from all roles at once
         refined_story = await self._refine_story_locally(
             initial_prompt, roles_to_consult, target_repo_info, repository
         )
-        
+
         if not refined_story:
             logger.error("Failed to refine story locally")
             return None
-            
+
         # Create the GitHub issue with the complete, refined story
         story = await self._create_github_story(
-            refined_story["title"],
-            refined_story["body"], 
-            repository
+            refined_story["title"], refined_story["body"], repository
         )
-        
+
         if story:
             logger.info(f"Successfully created complete story #{story.id}")
-        
+
         return story
-        
+
     async def _refine_story_locally(
         self,
         initial_prompt: str,
@@ -240,7 +238,7 @@ Repository Context:
 """
         elif target_repo_info:
             repo_context = f"Repository Context: {target_repo_info}"
-            
+
         comprehensive_prompt = f"""
 Create a complete, actionable user story based on the following initial idea. Consider perspectives from all specified roles to ensure the story is comprehensive and ready for development.
 
@@ -286,17 +284,17 @@ Ensure the story is actionable and contains all information needed for developme
                 )
             else:
                 response = await self.llm_service.query_llm(comprehensive_prompt)
-                
+
             if response:
                 return self._parse_story_response(response)
             else:
                 logger.error("LLM returned empty response for story refinement")
                 return None
-                
+
         except Exception as e:
             logger.error(f"Error during local story refinement: {e}")
             return None
-            
+
     def _build_role_perspectives(self, roles: List[str]) -> str:
         """Build role perspective descriptions for the prompt."""
         role_descriptions = {
@@ -309,27 +307,27 @@ Ensure the story is actionable and contains all information needed for developme
             "Data Analyst": "Data requirements, analytics, reporting, metrics",
             "Technical Lead": "Technical strategy, code quality, best practices, team coordination",
         }
-        
+
         perspectives = []
         for role in roles:
             description = role_descriptions.get(role, "General project considerations")
             perspectives.append(f"- {role}: {description}")
-            
+
         return "\n".join(perspectives)
-        
+
     def _parse_story_response(self, response: str) -> Dict[str, str]:
         """Parse the LLM response into title and body components."""
-        lines = response.strip().split('\n')
+        lines = response.strip().split("\n")
         title = ""
         body_lines = []
-        
+
         # Find title
         for i, line in enumerate(lines):
-            if line.strip().startswith('## Title'):
+            if line.strip().startswith("## Title"):
                 if i + 1 < len(lines):
                     title = lines[i + 1].strip()
                 break
-        
+
         # Use the full response as body, or extract everything after title
         if title:
             # Find where the body content starts (after title section)
@@ -338,69 +336,68 @@ Ensure the story is actionable and contains all information needed for developme
                 if line.strip() == title:
                     title_section_end = i
                     break
-            
+
             if title_section_end >= 0 and title_section_end + 1 < len(lines):
-                body_lines = lines[title_section_end + 1:]
+                body_lines = lines[title_section_end + 1 :]
             else:
                 body_lines = lines
         else:
             # Fallback: use first line as title, rest as body
             if lines:
-                title = lines[0].strip().replace('## Title', '').replace('#', '').strip()
+                title = (
+                    lines[0].strip().replace("## Title", "").replace("#", "").strip()
+                )
                 body_lines = lines[1:] if len(lines) > 1 else lines
-        
+
         # Clean up body
-        body = '\n'.join(body_lines).strip()
-        
+        body = "\n".join(body_lines).strip()
+
         # Ensure we have both title and body
         if not title:
-            title = "User Story: " + (body.split('\n')[0][:50] + "..." if body else "Generated Story")
+            title = "User Story: " + (
+                body.split("\n")[0][:50] + "..." if body else "Generated Story"
+            )
         if not body:
             body = response  # Fallback to full response
-            
-        return {
-            "title": title,
-            "body": body
-        }
-        
+
+        return {"title": title, "body": body}
+
     async def _create_github_story(
-        self,
-        title: str,
-        body: str,
-        repository: Optional[str] = None
+        self, title: str, body: str, repository: Optional[str] = None
     ) -> Optional[UserStory]:
         """Create the GitHub issue with simplified labeling."""
         try:
             # Determine target repository
             target_repo = None
             if repository and self.config.is_multi_repository_mode():
-                repo_config = self.config.multi_repository_config.get_repository(repository)
+                repo_config = self.config.multi_repository_config.get_repository(
+                    repository
+                )
                 if repo_config:
                     target_repo = repo_config.name
-            
+
             # Simple labels - just mark as story and ready
             labels = ["story", "ready-for-development"]
-            
+
             # Add repository-specific labels if in multi-repo mode
             if repository and self.config.is_multi_repository_mode():
-                repo_config = self.config.multi_repository_config.get_repository(repository)
+                repo_config = self.config.multi_repository_config.get_repository(
+                    repository
+                )
                 if repo_config and repo_config.story_labels:
                     labels.extend(repo_config.story_labels)
-            
+
             # Create the issue
             create_result = await self.github_service.create_issue(
-                title=title,
-                body=body,
-                labels=labels,
-                target_repository=target_repo
+                title=title, body=body, labels=labels, target_repository=target_repo
             )
-            
+
             if not create_result.success:
                 logger.error(f"Failed to create GitHub issue: {create_result.error}")
                 return None
-                
+
             github_issue = create_result.data
-            
+
             # Create UserStory object
             story = UserStory(
                 id=github_issue.number,
@@ -408,9 +405,9 @@ Ensure the story is actionable and contains all information needed for developme
                 body=github_issue.body or "",
                 status="ready",
                 github_url=github_issue.html_url,
-                roles_involved=[]  # Could be inferred from content if needed
+                roles_involved=[],  # Could be inferred from content if needed
             )
-            
+
             # Add creation comment
             creation_comment = (
                 "🚀 **Complete Story Created**\n\n"
@@ -419,11 +416,11 @@ Ensure the story is actionable and contains all information needed for developme
                 f"**Roles Consulted:** {', '.join(self._last_consulted_roles or [])}\n"
                 "**Status:** Ready for development"
             )
-            
+
             await self.github_service.add_comment_to_issue(story.id, creation_comment)
-            
+
             return story
-            
+
         except Exception as e:
             logger.error(f"Error creating GitHub story: {e}")
             return None
@@ -884,7 +881,9 @@ Focus on technical implementation details and provide clear guidance for the dev
             logger.warning(
                 "Multi-repository mode not enabled, falling back to single repository"
             )
-            single_story = await self.create_complete_story(initial_prompt, roles_to_consult)
+            single_story = await self.create_complete_story(
+                initial_prompt, roles_to_consult
+            )
             return {"default": single_story}
 
         # Determine target repositories
@@ -908,13 +907,13 @@ Focus on technical implementation details and provide clear guidance for the dev
 
             try:
                 logger.info(f"Creating story for repository: {repo_config.name}")
-                
+
                 # Create story using simplified approach
                 story = await self.create_complete_story(
                     initial_prompt,
                     roles_to_consult,
                     f"{repo_config.description} ({repo_config.type})",
-                    repo_key
+                    repo_key,
                 )
                 results[repo_key] = story
 
@@ -922,18 +921,18 @@ Focus on technical implementation details and provide clear guidance for the dev
                     logger.info(
                         f"Successfully created story #{story.id} for repository {repo_config.name}"
                     )
-                    
+
                     # Add cross-repository references if there are dependencies
-                    await self._add_cross_repository_references(story, repo_key, results)
+                    await self._add_cross_repository_references(
+                        story, repo_key, results
+                    )
                 else:
                     logger.error(
                         f"Failed to create story for repository {repo_config.name}"
                     )
 
             except Exception as e:
-                logger.error(
-                    f"Error creating story for repository {repo_key}: {e}"
-                )
+                logger.error(f"Error creating story for repository {repo_key}: {e}")
                 results[repo_key] = None
 
         return results
@@ -1081,6 +1080,8 @@ Focus on technical implementation details and provide clear guidance for the dev
     # REMOVED: check_agreement - simplified approach doesn't need consensus checking
 
     # REMOVED: finalize_story_with_iterations - simplified approach creates ready stories directly
+
+
 if __name__ == "__main__":
     import asyncio
     import os

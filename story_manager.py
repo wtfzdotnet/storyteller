@@ -43,6 +43,7 @@ class StoryOrchestrator:
         self.github_service = github_service
         self.config = config or get_config()
         self.use_repository_prompts = self._can_use_repository_prompts()
+        self._last_consulted_roles = []  # Track roles for reporting
         logger.info("StoryOrchestrator initialized.")
         if self.use_repository_prompts:
             logger.info("Repository-based prompts are enabled for GitHub Models.")
@@ -167,120 +168,267 @@ class StoryOrchestrator:
 
         return {"title": title, "body": body}
 
-    async def create_new_story(
+    async def create_complete_story(
         self,
         initial_prompt: str,
         roles_to_consult: List[str],
         target_repo_info: Optional[str] = None,
-        target_repository_key: Optional[str] = None,
+        repository: Optional[str] = None,
     ) -> Optional[UserStory]:
         """
-        Creates a new user story using LLM and posts it to GitHub.
-
+        Creates a complete, actionable user story using local AI processing.
+        
+        This simplified approach does all refinement locally before creating the GitHub issue,
+        resulting in a ready-to-implement story without iteration on GitHub.
+        
         Args:
-            initial_prompt: The user's request for the story
-            roles_to_consult: List of roles to involve in the story
-            target_repo_info: Optional context about the target repository
-            target_repository_key: Repository key for multi-repository mode
+            initial_prompt: The user's initial idea or requirement
+            roles_to_consult: List of roles to consider perspectives from
+            target_repo_info: Optional repository context
+            repository: Target repository key for multi-repository mode
+            
+        Returns:
+            UserStory object with GitHub issue created, or None if failed
         """
-        # Determine target repository
-        target_repo = self.config.get_target_repository(target_repository_key)
-        if not target_repo:
-            logger.error(f"No target repository found for key: {target_repository_key}")
+        logger.info(f"Creating complete story from prompt: '{initial_prompt}'")
+        logger.info(f"Consulting roles: {roles_to_consult}")
+        
+        # Track roles for reporting
+        self._last_consulted_roles = roles_to_consult
+        
+        # Local story refinement - gather perspectives from all roles at once
+        refined_story = await self._refine_story_locally(
+            initial_prompt, roles_to_consult, target_repo_info, repository
+        )
+        
+        if not refined_story:
+            logger.error("Failed to refine story locally")
             return None
-
-        logger.info(
-            f"Creating new story based on prompt: '{initial_prompt[:50]}...' for roles: {roles_to_consult}"
+            
+        # Create the GitHub issue with the complete, refined story
+        story = await self._create_github_story(
+            refined_story["title"],
+            refined_story["body"], 
+            repository
         )
-        logger.info(f"Target repository: {target_repo}")
-
-        # Build enhanced context for multi-repository mode
-        repo_context = target_repo_info or target_repo
-        if self.config.is_multi_repository_mode() and target_repository_key:
-            repo_config = self.config.multi_repository_config.get_repository(
-                target_repository_key
-            )
+        
+        if story:
+            logger.info(f"Successfully created complete story #{story.id}")
+        
+        return story
+        
+    async def _refine_story_locally(
+        self,
+        initial_prompt: str,
+        roles_to_consult: List[str],
+        target_repo_info: Optional[str] = None,
+        repository: Optional[str] = None,
+    ) -> Optional[Dict[str, str]]:
+        """
+        Refine the story locally by gathering input from all roles at once.
+        """
+        # Build comprehensive prompt that considers all perspectives
+        repo_context = ""
+        if repository and self.config.is_multi_repository_mode():
+            repo_config = self.config.multi_repository_config.get_repository(repository)
             if repo_config:
-                repo_context = f"{repo_config.description} ({repo_config.type})"
-                dependencies = self.get_repository_dependencies(target_repository_key)
-                if dependencies:
-                    repo_context += f". Dependencies: {', '.join(dependencies)}"
+                repo_context = f"""
+Repository Context:
+- Repository: {repo_config.name} ({repo_config.type})
+- Description: {repo_config.description}
+- Focus areas: {repo_config.type}-specific considerations
+"""
+        elif target_repo_info:
+            repo_context = f"Repository Context: {target_repo_info}"
+            
+        comprehensive_prompt = f"""
+Create a complete, actionable user story based on the following initial idea. Consider perspectives from all specified roles to ensure the story is comprehensive and ready for development.
 
-        llm_prompt = (
-            f"You are a highly experienced Product Owner. Your task is to generate a user story based on the following request:\n"
-            f"Request: '{initial_prompt}'\n\n"
-            f"The user story should be well-defined, actionable, and follow the standard format.\n"
-            f"Consider that the following roles will be involved in its implementation and potential feedback: {', '.join(roles_to_consult)}.\n"
-            f"If the request implies multiple features, focus on the most critical one for this user story.\n"
-            f"Provide the output in the following format:\n"
-            f"Title: [Concise Story Title]\n"
-            f"Body: As a [specific user type], I want [a specific action/feature] so that [a clear benefit/value].\n\n"
-            f"Additional details or acceptance criteria can be added below the main body if necessary, but ensure the primary body is concise."
-        )
+Initial Idea: {initial_prompt}
 
-        if repo_context:
-            llm_prompt += f"\n\nThe story will be part of the '{repo_context}' project. Keep this context in mind."
+{repo_context}
+
+Consider these role perspectives:
+{self._build_role_perspectives(roles_to_consult)}
+
+Create a user story that includes:
+1. Clear user story format: "As a [user], I want [goal] so that [benefit]"
+2. Comprehensive acceptance criteria covering all edge cases
+3. Technical considerations for implementation
+4. Testing scenarios and quality requirements
+5. Clear scope and boundaries
+
+Format the response as:
+## Title
+[Concise story title]
+
+## User Story
+[Complete user story description]
+
+## Acceptance Criteria
+[Detailed acceptance criteria as checklist]
+
+## Technical Notes
+[Implementation considerations]
+
+## Testing Scenarios
+[Key test cases to consider]
+
+Ensure the story is actionable and contains all information needed for development without further iteration.
+"""
 
         try:
-            # If using GitHub Models with repository-based prompts
-            if self.use_repository_prompts:
+            if self.use_repository_prompts and repository:
+                # Use repository-specific documentation if available
                 role_docs = self._get_role_documentation_paths(roles_to_consult)
-                logger.info(
-                    f"Using repository-based prompt with role docs: {role_docs}"
-                )
-                llm_response = await self.llm_service.query_llm(
-                    llm_prompt, repository_references=role_docs
+                response = await self.llm_service.query_llm(
+                    comprehensive_prompt, repository_references=role_docs
                 )
             else:
-                llm_response = await self.llm_service.query_llm(llm_prompt)
-
-            if not llm_response:
-                logger.error("LLM returned an empty response for story generation.")
-                return None
-
-            parsed_story = self._parse_llm_story_output(llm_response)
-            story_title = parsed_story["title"]
-            story_body = parsed_story["body"]
-
-            # Convert role names to needs/* labels consistently with workflow processor
-            role_labels = []
-            for role_name in roles_to_consult:
-                role_slug = role_name.replace(" ", "-").lower()
-                role_labels.append(f"needs/{role_slug}")
-
-            labels = ["user_story", "ai_generated"] + role_labels
-
-            logger.info(f"Creating GitHub issue with Title: '{story_title}'")
-            created_issue_result = await self.github_service.create_issue(
-                title=story_title, body=story_body, labels=labels
-            )
-
-            if created_issue_result.success:
-                created_issue = created_issue_result.data
-                user_story = UserStory(
-                    id=created_issue.number,
-                    title=created_issue.title,
-                    body=created_issue.body or "",  # Ensure body is not None
-                    status="draft",
-                    roles_involved=roles_to_consult,
-                    github_url=created_issue.html_url,
-                )
-                logger.info(
-                    f"Successfully created story #{user_story.id} - '{user_story.title}'"
-                )
-                # Add a comment indicating it was AI generated and what roles are expected for feedback
-                await self.github_service.add_comment_to_issue(
-                    created_issue.number,
-                    f"This user story was automatically generated based on the prompt: '{initial_prompt}'.\n\n"
-                    f"Awaiting feedback from the following roles: {', '.join(roles_to_consult)}.",
-                )
-                return user_story
+                response = await self.llm_service.query_llm(comprehensive_prompt)
+                
+            if response:
+                return self._parse_story_response(response)
             else:
-                logger.error("Failed to create GitHub issue for the new story.")
+                logger.error("LLM returned empty response for story refinement")
                 return None
+                
         except Exception as e:
-            logger.error(f"Error in create_new_story: {e}", exc_info=True)
+            logger.error(f"Error during local story refinement: {e}")
             return None
+            
+    def _build_role_perspectives(self, roles: List[str]) -> str:
+        """Build role perspective descriptions for the prompt."""
+        role_descriptions = {
+            "Product Owner": "Business value, user needs, market requirements, acceptance criteria",
+            "Lead Developer": "Technical feasibility, architecture, implementation complexity, dependencies",
+            "QA Engineer": "Testing scenarios, edge cases, quality criteria, validation requirements",
+            "UX Designer": "User experience, usability, accessibility, user journey",
+            "DevOps Engineer": "Deployment, infrastructure, monitoring, performance requirements",
+            "Security Engineer": "Security considerations, compliance, data protection, threat modeling",
+            "Data Analyst": "Data requirements, analytics, reporting, metrics",
+            "Technical Lead": "Technical strategy, code quality, best practices, team coordination",
+        }
+        
+        perspectives = []
+        for role in roles:
+            description = role_descriptions.get(role, "General project considerations")
+            perspectives.append(f"- {role}: {description}")
+            
+        return "\n".join(perspectives)
+        
+    def _parse_story_response(self, response: str) -> Dict[str, str]:
+        """Parse the LLM response into title and body components."""
+        lines = response.strip().split('\n')
+        title = ""
+        body_lines = []
+        
+        # Find title
+        for i, line in enumerate(lines):
+            if line.strip().startswith('## Title'):
+                if i + 1 < len(lines):
+                    title = lines[i + 1].strip()
+                break
+        
+        # Use the full response as body, or extract everything after title
+        if title:
+            # Find where the body content starts (after title section)
+            title_section_end = -1
+            for i, line in enumerate(lines):
+                if line.strip() == title:
+                    title_section_end = i
+                    break
+            
+            if title_section_end >= 0 and title_section_end + 1 < len(lines):
+                body_lines = lines[title_section_end + 1:]
+            else:
+                body_lines = lines
+        else:
+            # Fallback: use first line as title, rest as body
+            if lines:
+                title = lines[0].strip().replace('## Title', '').replace('#', '').strip()
+                body_lines = lines[1:] if len(lines) > 1 else lines
+        
+        # Clean up body
+        body = '\n'.join(body_lines).strip()
+        
+        # Ensure we have both title and body
+        if not title:
+            title = "User Story: " + (body.split('\n')[0][:50] + "..." if body else "Generated Story")
+        if not body:
+            body = response  # Fallback to full response
+            
+        return {
+            "title": title,
+            "body": body
+        }
+        
+    async def _create_github_story(
+        self,
+        title: str,
+        body: str,
+        repository: Optional[str] = None
+    ) -> Optional[UserStory]:
+        """Create the GitHub issue with simplified labeling."""
+        try:
+            # Determine target repository
+            target_repo = None
+            if repository and self.config.is_multi_repository_mode():
+                repo_config = self.config.multi_repository_config.get_repository(repository)
+                if repo_config:
+                    target_repo = repo_config.name
+            
+            # Simple labels - just mark as story and ready
+            labels = ["story", "ready-for-development"]
+            
+            # Add repository-specific labels if in multi-repo mode
+            if repository and self.config.is_multi_repository_mode():
+                repo_config = self.config.multi_repository_config.get_repository(repository)
+                if repo_config and repo_config.story_labels:
+                    labels.extend(repo_config.story_labels)
+            
+            # Create the issue
+            create_result = await self.github_service.create_issue(
+                title=title,
+                body=body,
+                labels=labels,
+                target_repository=target_repo
+            )
+            
+            if not create_result.success:
+                logger.error(f"Failed to create GitHub issue: {create_result.error}")
+                return None
+                
+            github_issue = create_result.data
+            
+            # Create UserStory object
+            story = UserStory(
+                id=github_issue.number,
+                title=github_issue.title,
+                body=github_issue.body or "",
+                status="ready",
+                github_url=github_issue.html_url,
+                roles_involved=[]  # Could be inferred from content if needed
+            )
+            
+            # Add creation comment
+            creation_comment = (
+                "🚀 **Complete Story Created**\n\n"
+                "This story has been refined with input from multiple perspectives and is ready for development. "
+                "No further iteration is needed.\n\n"
+                f"**Roles Consulted:** {', '.join(self._last_consulted_roles or [])}\n"
+                "**Status:** Ready for development"
+            )
+            
+            await self.github_service.add_comment_to_issue(story.id, creation_comment)
+            
+            return story
+            
+        except Exception as e:
+            logger.error(f"Error creating GitHub story: {e}")
+            return None
+
+    # REMOVED: Original create_new_story method - replaced with create_complete_story for simplified approach
 
     async def create_refactor_tickets(
         self,
@@ -893,163 +1041,7 @@ Focus on technical implementation details and provide clear guidance for the dev
             )
             await self.github_service.add_comment_to_issue(story.id, reference_comment)
 
-    async def gather_feedback_and_iterate(
-        self, story_id: int, roles_providing_feedback: List[str]
-    ) -> Optional[UserStory]:
-        logger.info(
-            f"Gathering feedback for story #{story_id} from roles: {roles_providing_feedback}"
-        )
-
-        github_issue_result = await self.github_service.get_issue(story_id)
-        if not github_issue_result.success:
-            logger.error(f"Story #{story_id} not found on GitHub.")
-            return None
-        github_issue = github_issue_result.data
-
-        current_story_repr = UserStory(
-            id=github_issue.number,
-            title=github_issue.title,
-            body=github_issue.body or "",
-            status=github_issue.state,  # "open" or "closed"
-            github_url=github_issue.html_url,
-            # roles_involved can be inferred from labels or passed if known
-        )
-        # Load existing comments into feedback_log
-        existing_comments_result = await self.github_service.get_issue_comments(
-            story_id
-        )
-        existing_comments = []
-        if existing_comments_result.success:
-            existing_comments = existing_comments_result.data
-            for comment in existing_comments:
-                current_story_repr.feedback_log.append(
-                    {
-                        "role": comment.user.login,  # Using GitHub username as role placeholder
-                        "comment": comment.body,
-                    }
-                )
-
-        # Simulate Feedback Generation using LLM for each role
-        generated_feedback_texts = []
-        for role in roles_providing_feedback:
-            feedback_prompt = (
-                f"You are the {role}. Review the following user story and provide your specific feedback, "
-                f"concerns, potential edge cases, and any suggestions for improvement from your perspective.\n\n"
-                f"User Story Title: {github_issue.title}\n"
-                f"User Story Body:\n{github_issue.body}\n\n"
-                f"Focus on aspects relevant to your role. Be concise and actionable."
-            )
-            try:
-                # If using GitHub Models with repository-based prompts
-                if self.use_repository_prompts:
-                    # Get role-specific documentation paths
-                    role_docs = self._get_role_documentation_paths([role])
-                    logger.info(
-                        f"Using repository-based prompt for {role} with docs: {role_docs}"
-                    )
-                    feedback_comment_text = await self.llm_service.query_llm(
-                        feedback_prompt, repository_references=role_docs
-                    )
-                else:
-                    feedback_comment_text = await self.llm_service.query_llm(
-                        feedback_prompt
-                    )
-
-                if feedback_comment_text:
-                    comment_body = f"**AI-Generated Feedback from Perspective of {role}**:\n\n{feedback_comment_text}"
-                    await self.github_service.add_comment_to_issue(
-                        story_id, comment_body
-                    )
-                    current_story_repr.feedback_log.append(
-                        {"role": f"{role} (AI)", "comment": feedback_comment_text}
-                    )
-                    generated_feedback_texts.append(
-                        f"Feedback from {role} (AI):\n{feedback_comment_text}"
-                    )
-                else:
-                    logger.warning(
-                        f"LLM returned no feedback for role {role} on story {story_id}"
-                    )
-            except Exception as e:
-                logger.error(
-                    f"Error generating LLM feedback for role {role} on story {story_id}: {e}"
-                )
-
-        if (
-            not generated_feedback_texts and not existing_comments
-        ):  # No feedback to process
-            logger.info(
-                f"No new or existing feedback to process for story #{story_id}."
-            )
-            current_story_repr.status = "pending_human_review"  # Or keep as is
-            # Potentially update labels on GitHub if status changes meaningfully
-            # self.github_service.update_issue(story_id, labels=["user_story", "pending_human_review"])
-            return current_story_repr
-
-        # LLM Summarizes Feedback and Suggests Modifications
-        all_feedback_str = "\n\n---\n\n".join(
-            [
-                f"Comment from {fb['role']}:\n{fb['comment']}"
-                for fb in current_story_repr.feedback_log
-            ]
-        )
-
-        summary_prompt = (
-            f"You are a Sprint Master / Lead Facilitator. The following user story has received feedback from various roles.\n\n"
-            f"Original User Story Title: {github_issue.title}\n"
-            f"Original User Story Body:\n{github_issue.body}\n\n"
-            f"Collected Feedback:\n{all_feedback_str}\n\n"
-            f"Your tasks are to:\n"
-            f"1. Briefly summarize the key positive and negative feedback points.\n"
-            f"2. Identify any conflicting feedback or areas requiring clarification.\n"
-            f"3. Suggest a revised user story (Title and Body) that attempts to address the actionable feedback. If feedback is minimal or only positive, suggest keeping it as is or with minor enhancements.\n"
-            f"4. If significant clarification is needed, formulate 1-2 key questions to ask the team.\n\n"
-            f"Present your output clearly, with sections for Summary, Conflicts/Clarifications, Suggested Revision (Title and Body), and Questions for Team (if any)."
-        )
-
-        try:
-            # If using GitHub Models with repository-based prompts
-            if self.use_repository_prompts:
-                # Get role documentation for a lead facilitator role
-                role_docs = ["AI.md", ".storyteller/roles/ProductOwner.md"]
-                logger.info(
-                    f"Using repository-based prompt for feedback summary with docs: {role_docs}"
-                )
-                llm_summary_and_suggestions = await self.llm_service.query_llm(
-                    summary_prompt, repository_references=role_docs
-                )
-            else:
-                llm_summary_and_suggestions = await self.llm_service.query_llm(
-                    summary_prompt
-                )
-
-            if llm_summary_and_suggestions:
-                # Post LLM's summary and suggestions as a comment for human review
-                await self.github_service.add_comment_to_issue(
-                    story_id,
-                    f"**AI Suggested Iteration and Feedback Summary**:\n\n{llm_summary_and_suggestions}",
-                )
-                current_story_repr.status = (
-                    "pending_review"  # Or "needs_iteration_review"
-                )
-                # Update labels on GitHub to reflect this status
-                await self.github_service.update_issue(
-                    story_id,
-                    labels=["user_story", "pending_review", "ai_suggestions_added"],
-                )
-                logger.info(
-                    f"Posted LLM summary and suggestions for story #{story_id}."
-                )
-            else:
-                logger.warning(
-                    f"LLM returned no summary/suggestions for story {story_id}"
-                )
-        except Exception as e:
-            logger.error(
-                f"Error processing LLM summary/suggestions for story {story_id}: {e}"
-            )
-
-        return current_story_repr
+    # REMOVED: gather_feedback_and_iterate - simplified approach does local processing instead
 
     async def get_story_details(self, story_id: int) -> Optional[UserStory]:
         logger.info(f"Fetching details for story #{story_id}")
@@ -1086,361 +1078,9 @@ Focus on technical implementation details and provide clear guidance for the dev
         logger.info(f"Successfully retrieved details for story #{user_story.id}")
         return user_story
 
-    async def check_agreement(
-        self, story_id: int, participating_roles: List[str]
-    ) -> bool:
-        logger.info(
-            f"Checking agreement for story #{story_id} among roles: {participating_roles}"
-        )
-        # Check for agreement (this is likely to be False initially)
-        comments_result = await self.github_service.get_issue_comments(story_id)
-        comments = []
-        if comments_result.success:
-            comments = comments_result.data
+    # REMOVED: check_agreement - simplified approach doesn't need consensus checking
 
-        if not comments:
-            logger.info(
-                f"No comments found for story #{story_id}. Agreement cannot be determined."
-            )
-            return False
-
-        # Combine comments into a single text for LLM analysis
-        # Consider filtering for comments from specific users if roles can be mapped to users
-        formatted_comments = "\n\n---\n\n".join(
-            [
-                f"Comment from {comment.user.login} (posted at {comment.created_at}):\n{comment.body}"
-                for comment in comments
-            ]
-        )
-
-        # Basic check: if no participating_roles, agreement is vacuously true or false based on policy
-        if not participating_roles:
-            logger.warning(
-                "No participating roles provided for agreement check. Returning False."
-            )
-            return False
-
-        agreement_prompt = (
-            f"Review the following comments for user story #{story_id}. The story involves these roles: {', '.join(participating_roles)}.\n"
-            f"Determine if the comments indicate that all explicitly mentioned participating roles have expressed agreement, approval, or satisfaction with the current state of the user story. "
-            f"Look for phrases like 'approved', 'agreed', 'looks good', 'LGTM', 'ready for implementation', or similar positive affirmations from each role.\n"
-            f"If a role has raised concerns or asked for further changes recently, they have not agreed.\n"
-            f"Consider recent comments more heavily than older ones if there's a sequence of discussion.\n"
-            f"Based *only* on the provided comments, respond with a single word: YES or NO.\n\n"
-            f"Comments:\n{formatted_comments}"
-        )
-
-        try:
-            # If using GitHub Models with repository-based prompts
-            if self.use_repository_prompts:
-                # Use general context for agreement checking
-                role_docs = ["AI.md"]
-                logger.info(
-                    f"Using repository-based prompt for agreement check with docs: {role_docs}"
-                )
-                agreement_response = await self.llm_service.query_llm(
-                    agreement_prompt, repository_references=role_docs
-                )
-            else:
-                agreement_response = await self.llm_service.query_llm(agreement_prompt)
-
-            logger.info(
-                f"Agreement check response for story #{story_id}: {agreement_response}"
-            )
-            # Look for a clear YES in the response, be strict
-            agreement = (
-                "yes" in agreement_response.lower()
-                and len(agreement_response.strip()) < 10
-            )
-            if agreement:
-                logger.info(
-                    f"Agreement detected for story #{story_id} among roles {participating_roles}"
-                )
-            else:
-                logger.info(
-                    f"No clear agreement for story #{story_id} among roles {participating_roles}"
-                )
-            return agreement
-        except Exception as e:
-            logger.error(f"Error checking agreement for story {story_id}: {e}")
-            # In case of error, assume no agreement
-            return False
-
-    async def finalize_story_with_iterations(
-        self, story_id: int, preserve_original: bool, dry_run: bool, format_type: str
-    ) -> Optional[Dict[str, Any]]:
-        """
-        Analyzes iteration history and creates a comprehensive finalized story.
-
-        Args:
-            story_id: GitHub issue number
-            preserve_original: Whether to preserve original story in collapsible section
-            dry_run: If True, returns content without updating GitHub
-            format_type: Output format ('structured', 'detailed', 'markdown')
-
-        Returns:
-            Dict with 'content' and 'story' keys, or None if failed
-        """
-        logger.info(f"Finalizing story #{story_id} with iterations analysis")
-
-        # Get the current issue
-        github_issue_result = await self.github_service.get_issue(story_id)
-        if not github_issue_result.success:
-            logger.error(f"Story #{story_id} not found on GitHub.")
-            return None
-        github_issue = github_issue_result.data
-
-        # Get all comments (feedback iterations)
-        comments_result = await self.github_service.get_issue_comments(story_id)
-        comments = comments_result.data if comments_result.success else []
-
-        # Extract iteration history from AI-generated comments
-        iteration_history = []
-        for comment in comments:
-            comment_body = comment.body or ""
-            # Look for AI-generated feedback and iteration comments
-            if any(
-                keyword in comment_body
-                for keyword in [
-                    "AI-Generated Feedback",
-                    "Iteration Analysis",
-                    "Role Feedback",
-                    "AI Suggested Iteration",
-                    "Feedback Summary",
-                ]
-            ):
-                iteration_history.append(
-                    {
-                        "author": comment.user.login,
-                        "created_at": comment.created_at,
-                        "body": comment_body,
-                    }
-                )
-
-        if not iteration_history:
-            logger.warning(f"No iteration history found for story #{story_id}")
-            # Still allow finalization with just the original content
-
-        logger.info(f"Found {len(iteration_history)} iterations to analyze")
-
-        # Create comprehensive summary prompt
-        iteration_text = (
-            "\n\n".join(
-                [
-                    f"--- Iteration {i+1} ({item['created_at'].strftime('%Y-%m-%d %H:%M UTC')}) ---\n{item['body']}"
-                    for i, item in enumerate(iteration_history)
-                ]
-            )
-            if iteration_history
-            else "No iterations found."
-        )
-
-        summary_prompt = f"""
-        Analyze the following user story and its iteration history to create a comprehensive, finalized story.
-        
-        **Original Story:**
-        Title: {github_issue.title}
-        Body: {github_issue.body or "No description provided"}
-        
-        **Iteration History:**
-        {iteration_text}
-        
-        Please provide a structured analysis with the following sections:
-        
-        ## Executive Summary
-        Provide a high-level overview of what was refined and the key insights gained.
-        
-        ## Product Owner Perspective
-        Focus on:
-        - Business value and user needs
-        - Acceptance criteria refinements
-        - Priority and scope considerations
-        - Market/user feedback integration
-        
-        ## Developer Perspective
-        Focus on:
-        - Technical feasibility and implementation approach
-        - Dependencies and technical constraints
-        - Architecture and design considerations
-        - Effort estimation insights
-        
-        ## QA Perspective
-        Focus on:
-        - Testing scenarios and edge cases
-        - Quality criteria and definition of done
-        - Risk assessment and mitigation
-        - User acceptance testing considerations
-        
-        ## Finalized User Story
-        Provide a complete, actionable user story incorporating all feedback:
-        - Clear user type, action, and benefit
-        - Comprehensive acceptance criteria
-        - Well-defined scope and boundaries
-        
-        ## Key Evolution
-        Summarize what changed from the original story and why.
-        
-        ## Outstanding Questions
-        List any unresolved items that need stakeholder input.
-        
-        Format this as clear, structured markdown suitable for a GitHub issue.
-        """
-
-        logger.info("Generating comprehensive story analysis...")
-        try:
-            summary_response = await self.llm_service.query_llm(
-                summary_prompt, model="gpt-4o"
-            )
-        except Exception as e:
-            logger.error(f"Error generating story summary: {e}")
-            return None
-
-        if not summary_response:
-            logger.error("LLM returned empty response for story finalization")
-            return None
-
-        # Format the content based on requested format
-        if format_type == "structured":
-            updated_content = self._format_structured_story(
-                github_issue.title,
-                summary_response,
-                github_issue.body,
-                iteration_history,
-                preserve_original,
-            )
-        elif format_type == "detailed":
-            updated_content = self._format_detailed_story(
-                github_issue.title,
-                summary_response,
-                github_issue.body,
-                iteration_history,
-            )
-        else:  # markdown
-            updated_content = summary_response
-
-        if dry_run:
-            return {"content": updated_content, "story": None}
-
-        # Update the issue
-        logger.info(f"Updating issue #{story_id} with finalized story...")
-        try:
-            updated_issue_result = await self.github_service.update_issue(
-                story_id, title=github_issue.title, body=updated_content
-            )
-            if not updated_issue_result.success:
-                logger.error(f"Failed to update issue #{story_id}")
-                return None
-            updated_issue = updated_issue_result.data
-
-            # Add finalization labels
-            await self.github_service.add_label_to_issue(story_id, "story/finalized")
-            await self.github_service.add_label_to_issue(
-                story_id, "needs/user-approval"
-            )
-
-            # Remove iteration-related labels and old state labels
-            current_labels = [label.name for label in github_issue.labels]
-            labels_to_remove = []
-            for label in [
-                "story/enriching",
-                "story/reviewing",
-                "story/consensus",
-                "story/ready",
-            ]:
-                if label in current_labels:
-                    labels_to_remove.append(label)
-
-            for label in current_labels:
-                if label.startswith("iteration/") or label.startswith("consensus/"):
-                    labels_to_remove.append(label)
-
-            # Remove old labels
-            for label in labels_to_remove:
-                await self.github_service.remove_label_from_issue(story_id, label)
-
-            # Add a comment indicating finalization
-            finalization_comment = (
-                "🎯 **Story Finalized with Iteration Analysis**\n\n"
-                f"This story has been analyzed and finalized based on {len(iteration_history)} iteration(s). "
-                "The story content has been updated with comprehensive insights from multiple perspectives.\n\n"
-                "**Next Steps:**\n"
-                "- ✅ Review the finalized story content above\n"
-                "- 👍 Add the `approved/user` label if you approve the finalized version\n"
-                "- 🔄 The story will automatically transition to ready for development upon approval\n\n"
-                f"**Format:** {format_type} | **Original Preserved:** {'Yes' if preserve_original else 'No'}"
-            )
-            await self.github_service.add_comment_to_issue(
-                story_id, finalization_comment
-            )
-
-            # Create updated UserStory representation
-            finalized_story = UserStory(
-                id=updated_issue.number,
-                title=updated_issue.title,
-                body=updated_issue.body or "",
-                status="finalized_pending_approval",
-                github_url=updated_issue.html_url,
-            )
-
-            logger.info(f"Successfully finalized story #{story_id}")
-            return {"content": updated_content, "story": finalized_story}
-
-        except Exception as e:
-            logger.error(f"Error updating issue #{story_id}: {e}")
-            return None
-
-    def _format_structured_story(
-        self,
-        title: str,
-        analysis: str,
-        original_body: str,
-        iterations: List[Dict],
-        preserve_original: bool,
-    ) -> str:
-        """Format story in structured format with preserved original"""
-        content = f"# {title}\n\n{analysis}\n\n---\n\n"
-
-        if preserve_original:
-            content += f"""<details>
-<summary>📋 Original Story (Click to expand)</summary>
-
-**Original Description:**
-{original_body or "No original description provided"}
-
-**Iteration Summary:**
-- **Total Iterations:** {len(iterations)}
-- **Last Updated:** {iterations[-1]['created_at'].strftime('%Y-%m-%d %H:%M UTC') if iterations else 'N/A'}
-- **AI Processing:** Complete
-
-</details>"""
-
-        return content
-
-    def _format_detailed_story(
-        self, title: str, analysis: str, original_body: str, iterations: List[Dict]
-    ) -> str:
-        """Format story with detailed iteration history"""
-        content = (
-            f"# {title}\n\n{analysis}\n\n---\n\n## 🔄 Complete Iteration History\n\n"
-        )
-
-        if iterations:
-            for i, iteration in enumerate(iterations):
-                content += f"### Iteration {i+1} - {iteration['created_at'].strftime('%Y-%m-%d %H:%M UTC')}\n"
-                content += f"**Author:** {iteration['author']}\n\n"
-                content += f"{iteration['body']}\n\n---\n\n"
-        else:
-            content += "No iterations recorded.\n\n"
-
-        content += f"""## 📋 Original Story
-
-**Original Description:**
-{original_body or "No original description provided"}
-"""
-
-        return content
-
-
+    # REMOVED: finalize_story_with_iterations - simplified approach creates ready stories directly
 if __name__ == "__main__":
     import asyncio
     import os

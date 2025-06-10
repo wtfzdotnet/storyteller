@@ -1,105 +1,72 @@
-# AI Project Documentation & Guidance
+# Recipe Authority Platform - AI Expert Team Documentation
 
-This is the main entry point for all AI-related documentation, project context, and advanced usage for the Recipe Authority API project.
+> **"The Authority of Recipes on the Internet" - Transforming Global Food Knowledge Through AI-Powered Expert Collaboration**
 
-## Contents
-- Project context for AI and Copilot usage
-- Multi-repository configuration and workflow
-- Role-specific guidance (see `roles/` subfolder)
-- Advanced prompt engineering and workflow tips
-- Reference to additional AI documentation in this folder
+This is the central hub for AI-assisted development on the Recipe Authority Platform, featuring a comprehensive team of expert AI roles that guide every aspect of building the world's most authoritative, culturally-respectful, and intelligent recipe platform.
 
----
+## Our Mission
 
-For Copilot configuration and actionable instructions, see `.github/copilot-instructions.md`.
+**Transform the chaotic landscape of web recipes into authoritative, cultural-aware, nutritionally-accurate knowledge that reduces food waste and enhances cooking experiences worldwide.**
 
-## Multi-Repository Configuration
+We're not just building another recipe website—we're creating the definitive global food knowledge platform that:
 
-This project supports both single repository and multi-repository modes for managing user stories across backend and frontend components.
+- **Establishes Authority**: Becomes the trusted source for accurate, culturally-authentic recipes
+- **Preserves Heritage**: Protects and shares endangered traditional cooking knowledge  
+- **Reduces Waste**: Optimizes meal planning and inventory management to minimize food waste
+- **Bridges Cultures**: Connects people worldwide through respectful food tradition sharing
+- **Enhances Health**: Provides personalized nutritional guidance integrated with cultural preferences
 
-### Configuration Structure
+## Technical Foundation
 
-The multi-repository configuration is defined in `.storyteller/config.json`:
+- **Domain-Driven Design (DDD)** with **Hexagonal Architecture** for scalable, maintainable systems
+- **PHP 8.4** with **Symfony 7.x** and **API Platform 4.0** for robust backend services
+- **Event-driven architecture** with **CQRS** patterns for complex data flows
+- **Progressive bounded contexts**: Recipe → Nutrition → User → Inventory → MealPlanning → Shopping → Cultural
+- **AI-First Integration**: Machine learning embedded throughout the platform architecture
 
-```json
-{
-  "repositories": {
-    "backend": {
-      "name": "project/backend",
-      "type": "backend", 
-      "description": "Backend API and services",
-      "dependencies": [],
-      "story_labels": ["backend", "api"]
-    },
-    "frontend": {
-      "name": "project/frontend",
-      "type": "frontend",
-      "description": "User interface and client applications", 
-      "dependencies": ["backend"],
-      "story_labels": ["frontend", "ui"]
-    }
-  },
-  "default_repository": "backend",
-  "story_workflow": {
-    "create_subtickets": true,
-    "respect_dependencies": true
-  }
-}
-```
+## Strategic Product Evolution
 
-### Multi-Repository Commands
+### Phase 1: Recipe Authority Foundation (Months 1-6)
+**Goal**: Establish platform as definitive source for standardized, culturally-authentic recipes
+- Content authority and cultural validation systems
+- SEO-optimized recipe standardization
+- Community-driven authenticity verification
 
-#### List Available Repositories
-```bash
-python main.py story list-repositories
-```
+### Phase 2: Intelligent Meal Ecosystem (Months 6-12)  
+**Goal**: Create comprehensive meal planning with cultural awareness and nutritional optimization
+- AI-powered personalized meal planning
+- Cultural heritage recipe discovery
+- Social validation and community features
 
-#### Create Story in Specific Repository
-```bash
-python main.py story create "User authentication system" --repository backend
-```
+### Phase 3: Smart Inventory Integration (Months 12-18)
+**Goal**: Real-time inventory management with waste reduction and sustainability focus
+- Automated inventory tracking and expiration management
+- Smart meal optimization based on available ingredients
+- Sustainability and cost optimization features
 
-#### Create Stories Across Multiple Repositories
-```bash
-python main.py story create-multi "User dashboard with API" --repos backend,frontend
-```
+### Phase 4: Global Shopping Network (Months 18-24)
+**Goal**: Monetized affiliate shopping integration with local and cultural sourcing
+- Intelligent shopping list generation
+- Local and cultural ingredient sourcing
+- Affiliate revenue through grocery partnerships
 
-### Dependency Management
-
-The system automatically handles repository dependencies:
-- Stories are created in dependency order (backend before frontend)
-- Cross-repository references are added automatically
-- Dependency information is included in story prompts
-
-### Environment Variables
-
-For backward compatibility, single repository mode is still supported via environment variables:
-- `GITHUB_REPOSITORY=owner/repo` - Single repository mode
-- `GITHUB_TOKEN=token` - Required for GitHub API access
-
-
-# Recipe Authority Platform - AI Expert Team
-
-> **Central AI Documentation Hub for the Recipe Authority Platform**
-
-This document serves as the primary guide for AI-assisted development on the Recipe Authority Platform. It provides context about our expert AI team structure, role definitions, and how to leverage AI documentation for enhanced development workflows.
-
-## Project Context
-
-The **Recipe Authority Platform** is "The Authority of Recipes on the Internet" - a sophisticated recipe intelligence platform built with Domain-Driven Design (DDD) principles. We're solving the chaotic landscape of web recipes by creating authoritative, structured knowledge that transforms how people discover, plan, and cook meals.
-
-### Core Mission
-Transform inconsistent web recipes into authoritative, cultural-aware, nutritionally-accurate knowledge that reduces food waste and enhances cooking experiences worldwide.
-
-### Technical Foundation
-- **Domain-Driven Design (DDD)** with **Hexagonal Architecture**
-- **PHP 8.4** with **Symfony 7.x** and **API Platform 4.0**
-- **Event-driven architecture** with **CQRS** patterns
-- **Progressive bounded contexts**: Recipe � Nutrition � User � Inventory � MealPlanning � Shopping � Cultural
+### Phase 5: Cultural Exchange Platform (Months 24+)
+**Goal**: Premium cultural heritage preservation and global food diplomacy
+- Heritage recipe preservation network
+- Cultural exchange and food diplomacy features
+- Premium cultural expertise and advanced personalization
 
 ## AI Expert Team Structure
 
-Our AI-powered development process leverages a comprehensive team of expert roles, each bringing specialized knowledge to story analysis, feature development, and technical decisions.
+Our AI-powered development process leverages a comprehensive team of specialized expert roles, each bringing deep domain knowledge to story analysis, feature development, and technical decisions. This expert team ensures every aspect of our platform development is informed by professional-level expertise across culinary, technical, cultural, and health domains.
+
+### Expert Team Philosophy
+
+- **Domain-First Approach**: Every feature is analyzed through the lens of relevant domain experts
+- **Cultural Sensitivity**: Cultural experts ensure respectful and authentic representation
+- **Professional Standards**: Industry professionals maintain quality and authenticity standards  
+- **Collaborative Intelligence**: Multiple expert perspectives create comprehensive solutions
+- **Continuous Learning**: Experts stay current with industry trends and emerging practices
 
 ### <� Technical Leadership Roles
 
@@ -353,4 +320,70 @@ This approach ensures AI responses are:
 
 ---
 
-*This AI.md file serves as the central hub for understanding and leveraging our AI expert team for enhanced development workflows. It ensures culturally-aware, technically-sound, and domain-expert guidance throughout the Recipe Authority Platform development process.*
+## Multi-Repository Configuration
+
+This project supports both single repository and multi-repository modes for managing user stories across backend and frontend components.
+
+### Configuration Structure
+
+The multi-repository configuration is defined in `.storyteller/config.json`:
+
+```json
+{
+  "repositories": {
+    "backend": {
+      "name": "project/backend",
+      "type": "backend", 
+      "description": "Backend API and services",
+      "dependencies": [],
+      "story_labels": ["backend", "api"]
+    },
+    "frontend": {
+      "name": "project/frontend",
+      "type": "frontend",
+      "description": "User interface and client applications", 
+      "dependencies": ["backend"],
+      "story_labels": ["frontend", "ui"]
+    }
+  },
+  "default_repository": "backend",
+  "story_workflow": {
+    "create_subtickets": true,
+    "respect_dependencies": true
+  }
+}
+```
+
+### Multi-Repository Commands
+
+#### List Available Repositories
+```bash
+python main.py story list-repositories
+```
+
+#### Create Story in Specific Repository
+```bash
+python main.py story create "User authentication system" --repository backend
+```
+
+#### Create Stories Across Multiple Repositories
+```bash
+python main.py story create-multi "User dashboard with API" --repos backend,frontend
+```
+
+### Dependency Management
+
+The system automatically handles repository dependencies:
+- Stories are created in dependency order (backend before frontend)
+- Cross-repository references are added automatically
+- Dependency information is included in story prompts
+
+### Environment Variables
+
+For backward compatibility, single repository mode is still supported via environment variables:
+- `GITHUB_REPOSITORY=owner/repo` - Single repository mode
+- `GITHUB_TOKEN=token` - Required for GitHub API access
+
+---
+
+*This AI documentation serves as the central hub for understanding and leveraging our AI expert team for enhanced development workflows. It ensures culturally-aware, technically-sound, and domain-expert guidance throughout the Recipe Authority Platform development process.*

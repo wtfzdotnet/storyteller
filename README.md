@@ -139,23 +139,41 @@ Configure multi-repository setup in `.storyteller/config.json`:
 ```json
 {
   "repositories": {
+    "storyteller": {
+      "name": "wtfzdotnet/storyteller",
+      "type": "storyteller",
+      "description": "Storyteller is a tool for managing and automating software development workflows",
+      "dependencies": [],
+      "story_labels": ["user_story"]
+    },
     "backend": {
       "name": "wtfzdotnet/recipeer",
       "type": "backend",
-      "description": "Backend microservices for recipe authority platform",
+      "description": "Backend microservices that provide api's and services",
+      "dependencies": [],
       "story_labels": ["backend", "api"],
-      "auto_assign": {"assignee": ["wtfzdotnet"]}
+      "auto_assign": {
+        "assignee": ["wtfzdotnet"]
+      }
     },
     "frontend": {
       "name": "wtfzdotnet/recipes-frontend", 
       "type": "frontend",
-      "description": "User interface for recipe platform",
+      "description": "User interface and client applications",
       "dependencies": ["backend"],
-      "story_labels": ["frontend", "ui"]
+      "story_labels": ["frontend", "ui"],
+      "auto_assign": {
+        "assignee": ["wtfzdotnet"]
+      }
     }
   },
-  "default_repository": "backend"
+  "default_repository": "backend",
+  "story_workflow": {
+    "create_subtickets": true,
+    "respect_dependencies": true
+  }
 }
+
 ```
 
 ## 📊 Success Metrics

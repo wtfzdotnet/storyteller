@@ -8,8 +8,16 @@ from datetime import datetime
 from typing import Any, Callable, Dict, List, Optional
 
 from automation.workflow_processor import WorkflowProcessor
-from config import Config, get_config
+from config import (
+    Config,
+    LanguageType,
+    PlatformChoice,
+    get_config,
+    get_repository_config,
+    get_repository_ruleset,
+)
 from story_manager import StoryManager
+from template_manager import TemplateManager
 
 logger = logging.getLogger(__name__)
 
@@ -49,6 +57,7 @@ class MCPStoryServer:
         self.config = config or get_config()
         self.story_manager = StoryManager(self.config)
         self.workflow_processor = WorkflowProcessor(self.config)
+        self.template_manager = TemplateManager()
         self._handlers: Dict[str, Callable] = {}
         self._register_handlers()
 
@@ -1160,7 +1169,7 @@ class MCPStoryServer:
 
             # Generate supporting files
             supporting_files = self._generate_supporting_files(
-                component_name, component_type, template_type
+                component_name, component_type, template_type, props
             )
 
             return {
@@ -2826,253 +2835,152 @@ describe('{file_path.stem}', () => {{
         return suggestions
 
     def _generate_react_component(self, component_name, props, template_type):
-        """Generate React component code."""
+        """Generate React component code using templates."""
 
+        # Prepare props interface and destructuring
         props_interface = ""
         props_destructure = ""
 
         if props:
             props_interface = f"""interface {component_name}Props {{
 {chr(10).join(f"  {prop}: any;" for prop in props)}
-}}
-
-"""
+}}"""
             props_destructure = f"{{ {', '.join(props)} }}: {component_name}Props"
+
+        container_class = component_name.lower()
+
+        # Choose template based on type
+        if template_type == "form":
+            # Use stateful component template for forms
+            context = {
+                "component_name": component_name,
+                "props_interface": props_interface,
+                "props_destructure": props_destructure,
+                "container_class": container_class,
+                "state_variables": [
+                    {
+                        "name": "formData",
+                        "type_annotation": "<{[key: string]: any}>",
+                        "default_value": "{}",
+                    }
+                ],
+            }
+            return self.template_manager.render_template(
+                "react/stateful_component.tsx.j2", context
+            )
         else:
-            props_destructure = ""
-
-        if template_type == "basic":
-            return f"""{props_interface}const {component_name} = ({props_destructure}) => {{
-  return (
-    <div className="{component_name.lower()}">
-      <h2>{component_name}</h2>
-      {self._generate_react_template_content(template_type, props)}
-    </div>
-  );
-}};
-
-export default {component_name};
-"""
-        elif template_type == "form":
-            return f"""{props_interface}import {{ useState }} from 'react';
-
-const {component_name} = ({props_destructure}) => {{
-  const [formData, setFormData] = useState({{}});
-
-  const handleSubmit = (e) => {{
-    e.preventDefault();
-    // Handle form submission
-    console.log('Form submitted:', formData);
-  }};
-
-  const handleChange = (e) => {{
-    setFormData({{
-      ...formData,
-      [e.target.name]: e.target.value
-    }});
-  }};
-
-  return (
-    <div className="{component_name.lower()}">
-      <h2>{component_name}</h2>
-      <form onSubmit={{handleSubmit}}>
-        {self._generate_react_template_content(template_type, props)}
-        <button type="submit">Submit</button>
-      </form>
-    </div>
-  );
-}};
-
-export default {component_name};
-"""
-        elif template_type == "list":
-            return f"""{props_interface}const {component_name} = ({props_destructure}) => {{
-  const items = props?.items || [];
-
-  return (
-    <div className="{component_name.lower()}">
-      <h2>{component_name}</h2>
-      <ul>
-        {{items.map((item, index) => (
-          <li key={{index}}>{{item}}</li>
-        ))}}
-      </ul>
-    </div>
-  );
-}};
-
-export default {component_name};
-"""
-        else:
-            return self._generate_react_component(component_name, props, "basic")
-
-    def _generate_vue_component(self, component_name, props, template_type):
-        """Generate Vue component code."""
-
-        props_definition = ""
-        if props:
-            props_list = "', '".join(props)
-            props_definition = f"  props: ['{props_list}'],"
-
-        template_content = self._generate_vue_template_content(template_type, props)
-
-        return f"""<template>
-  <div class="{component_name.lower()}">
-    <h2>{component_name}</h2>
-    {template_content}
-  </div>
-</template>
-
-<script>
-export default {{
-  name: '{component_name}',
-{props_definition}
-  data() {{
-    return {{
-      // Component data
-    }};
-  }},
-  methods: {{
-    // Component methods
-  }}
-}};
-</script>
-
-<style scoped>
-.{component_name.lower()} {{
-  /* Component styles */
-}}
-</style>
-"""
-
-    def _generate_python_component(self, component_name, props, template_type):
-        """Generate Python component/class code."""
-
-        init_params = ""
-        init_assignments = ""
-
-        if props:
-            init_params = ", " + ", ".join(f"{prop}: Any = None" for prop in props)
-            init_assignments = "\\n".join(
-                f"        self.{prop} = {prop}" for prop in props
+            # Use functional component template for basic and list
+            context = {
+                "component_name": component_name,
+                "props_interface": props_interface,
+                "props_destructure": props_destructure,
+                "container_class": container_class,
+            }
+            return self.template_manager.render_template(
+                "react/functional_component.tsx.j2", context
             )
 
-        if template_type == "basic":
-            return f'''"""
-{component_name} component.
-"""
+    def _generate_vue_component(self, component_name, props, template_type):
+        """Generate Vue component code using templates."""
 
-from typing import Any, Optional
-import logging
+        # Prepare props configuration
+        vue_props = []
+        if props:
+            for prop in props:
+                vue_props.append(
+                    {
+                        "name": prop,
+                        "type": "String",  # Default to String, could be enhanced
+                        "type_name": "string",
+                        "required": False,
+                        "default": "''",
+                    }
+                )
 
-logger = logging.getLogger(__name__)
+        # Prepare data and methods based on template type
+        data = []
+        methods = []
 
+        if template_type == "form":
+            data.append({"name": "formData", "default": "{}"})
+            methods.append(
+                {
+                    "name": "handleSubmit",
+                    "params": "event",
+                }
+            )
+        elif template_type == "list":
+            data.append({"name": "items", "default": "[]"})
 
-class {component_name}:
-    """
-    {component_name} component for handling specific functionality.
-    """
+        context = {
+            "component_name": component_name,
+            "container_class": component_name.lower(),
+            "props": vue_props,
+            "has_props": len(vue_props) > 0,
+            "data": data,
+            "has_data": len(data) > 0,
+            "methods": methods,
+        }
 
-    def __init__(self{init_params}):
-        """
-        Initialize {component_name}.
-        
-        Args:
-{chr(10).join(f"            {prop}: {prop} parameter" for prop in props) if props else "            No parameters"}
-        """
-{init_assignments}
-        logger.info(f"{component_name} initialized")
+        return self.template_manager.render_template("vue/component.vue.j2", context)
 
-    def process(self) -> Any:
-        """
-        Main processing method.
-        
-        Returns:
-            Processing result
-        """
-        try:
-            # Implement main logic here
-            result = self._perform_operation()
-            return result
-        except Exception as e:
-            logger.error(f"Error in {component_name}.process(): {{e}}")
-            raise
+    def _generate_python_component(self, component_name, props, template_type):
+        """Generate Python component/class code using templates."""
 
-    def _perform_operation(self) -> Any:
-        """
-        Perform the main operation.
-        
-        Returns:
-            Operation result
-        """
-        # TODO: Implement operation logic
-        return None
+        # Prepare imports
+        imports = ["from typing import Any, Optional", "import logging"]
 
-    def __str__(self) -> str:
-        """String representation of {component_name}."""
-        return f"{component_name}({', '.join(f'{prop}={{getattr(self, prop, None)}}' for prop in props) if props else ''})"
+        if template_type == "dataclass":
+            imports.append("from dataclasses import dataclass, field")
 
-    def __repr__(self) -> str:
-        """Developer representation of {component_name}."""
-        return self.__str__()
-'''
-        elif template_type == "dataclass":
-            return f'''"""
-{component_name} data component.
-"""
+        # Prepare initialization parameters
+        init_params = ""
+        if props:
+            init_params = ", " + ", ".join(f"{prop}: Any = None" for prop in props)
 
-from dataclasses import dataclass, field
-from typing import Any, List, Optional
-import logging
-
-logger = logging.getLogger(__name__)
-
-
-@dataclass
-class {component_name}:
-    """
-    {component_name} data component.
-    """
-{chr(10).join(f"    {prop}: Any = None" for prop in props) if props else "    # No fields defined"}
-
-    def validate(self) -> bool:
-        """
-        Validate component data.
-        
-        Returns:
-            True if valid, False otherwise
-        """
-        # TODO: Implement validation logic
-        return True
-
-    def to_dict(self) -> dict:
-        """
-        Convert to dictionary.
-        
-        Returns:
-            Dictionary representation
-        """
-        return {{
-{chr(10).join(f'            "{prop}": self.{prop},' for prop in props) if props else "            # No fields to convert"}
-        }}
-
-    @classmethod
-    def from_dict(cls, data: dict) -> "{component_name}":
-        """
-        Create instance from dictionary.
-        
-        Args:
-            data: Dictionary data
-            
-        Returns:
-            {component_name} instance
-        """
-        return cls(
-{chr(10).join(f'            {prop}=data.get("{prop}"),' for prop in props) if props else "            # No fields to initialize"}
-        )
-'''
+        # Prepare initialization docstring
+        init_docstring = ""
+        if props:
+            init_docstring = "\n".join(
+                f"            {prop}: {prop} parameter" for prop in props
+            )
         else:
-            return self._generate_python_component(component_name, props, "basic")
+            init_docstring = "            No parameters"
+
+        # Prepare attributes
+        attributes = []
+        if props:
+            for prop in props:
+                attributes.append({"name": prop, "value": prop})
+
+        # Prepare methods
+        methods = [
+            {
+                "name": "process",
+                "params": "",
+                "description": "Main processing method",
+                "body": 'try:\n            # Implement main logic here\n            result = self._perform_operation()\n            return result\n        except Exception as e:\n            logger.error(f"Error in {component_name}.process(): {e}")\n            raise',
+            },
+            {
+                "name": "_perform_operation",
+                "params": "",
+                "description": "Perform the main operation",
+                "body": "# TODO: Implement operation logic\n        return None",
+            },
+        ]
+
+        context = {
+            "class_name": component_name,
+            "description": f"{component_name} component",
+            "class_description": f"{component_name} component for handling specific functionality",
+            "imports": imports,
+            "init_params": init_params,
+            "init_docstring": init_docstring,
+            "attributes": attributes,
+            "methods": methods,
+        }
+
+        return self.template_manager.render_template("python/class.py.j2", context)
 
     def _generate_react_template_content(self, template_type, props):
         """Generate React template content based on type."""
@@ -3111,86 +3019,389 @@ class {component_name}:
     <p>This is the {template_type} component.</p>
     {chr(10).join(f"    <p>{prop}: {{{{ {prop} }}}}</p>" for prop in props) if props else ""}"""
 
-    def _generate_supporting_files(self, component_name, component_type, template_type):
+    def _generate_supporting_files(
+        self, component_name, component_type, template_type, props=None
+    ):
         """Generate supporting files for the component."""
+        if props is None:
+            props = []
 
         supporting_files = {}
 
         if component_type == "react":
-            # Generate test file
-            supporting_files[
-                f"{component_name}.test.jsx"
-            ] = f"""import {{ render, screen }} from '@testing-library/react';
-import {component_name} from './{component_name}';
+            # Generate test file using template
+            test_context = {
+                "module_name": component_name,
+                "component_name": component_name,
+                "framework": "jest",
+                "imports": [f"import {component_name} from './{component_name}';"],
+                "test_cases": [
+                    {
+                        "description": "renders component",
+                        "code": f"render(<{component_name} />);\n    expect(screen.getByText('{component_name}')).toBeInTheDocument();",
+                    }
+                ],
+            }
 
-describe('{component_name}', () => {{
-  test('renders component', () => {{
-    render(<{component_name} />);
-    expect(screen.getByText('{component_name}')).toBeInTheDocument();
-  }});
-}});
-"""
+            supporting_files[f"{component_name}.test.jsx"] = (
+                self.template_manager.render_template(
+                    "tests/js_test.ts.j2", test_context
+                )
+            )
 
-            # Generate story file
-            supporting_files[
-                f"{component_name}.stories.jsx"
-            ] = f"""import type {{ Meta, StoryObj }} from '@storybook/react';
-import {{ {component_name} }} from './{component_name}';
+            # Generate story file using template
+            story_context = {
+                "component_name": component_name,
+                "component_file": component_name,
+                "story_title": f"Components/{component_name}",
+                "arg_types": [
+                    {"name": prop.get("name", ""), "control": "text"} for prop in props
+                ],
+                "default_args": {
+                    prop.get("name", ""): (
+                        "''" if prop.get("type", "string") == "string" else "false"
+                    )
+                    for prop in props
+                },
+                "additional_stories": [
+                    {
+                        "name": "Interactive",
+                        "args": {
+                            prop.get("name", ""): (
+                                "'Interactive'"
+                                if prop.get("type", "string") == "string"
+                                else "true"
+                            )
+                            for prop in props
+                        },
+                    }
+                ],
+            }
 
-const meta: Meta<typeof {component_name}> = {{
-  title: 'Components/{component_name}',
-  component: {component_name},
-  parameters: {{
-    layout: 'centered',
-  }},
-  tags: ['autodocs'],
-  argTypes: {{
-{self._generate_arg_types(props)}
-  }},
-}};
-
-export default meta;
-type Story = StoryObj<typeof meta>;
-
-export const Default: Story = {{
-  args: {{
-{self._generate_default_args(props)}
-  }},
-}};
-
-export const Interactive: Story = {{
-  args: {{
-{self._generate_interactive_args(props)}
-  }},
-}};
-"""
+            supporting_files[f"{component_name}.stories.jsx"] = (
+                self.template_manager.render_template(
+                    "storybook/react_story.stories.tsx.j2", story_context
+                )
+            )
 
         elif component_type == "python":
-            # Generate test file
-            supporting_files[
-                f"test_{component_name.lower()}.py"
-            ] = f'''"""
-Tests for {component_name} component.
-"""
+            # Generate test file using template
+            test_context = {
+                "module_name": component_name.lower(),
+                "class_name": component_name,
+                "imports": [f"from {component_name.lower()} import {component_name}"],
+                "test_methods": [
+                    {
+                        "name": "initialization",
+                        "description": f"{component_name} initialization",
+                        "arrange": f"component = {component_name}()",
+                        "act": "# Component created",
+                        "assert": "assert component is not None",
+                    },
+                    {
+                        "name": "process",
+                        "description": f"{component_name} process method",
+                        "arrange": f"component = {component_name}()",
+                        "act": "result = component.process()",
+                        "assert": "assert result is not None or result is None  # Update as needed",
+                    },
+                ],
+            }
 
-import pytest
-from {component_name.lower()} import {component_name}
-
-
-class Test{component_name}:
-    """Test class for {component_name}."""
-
-    def test_initialization(self):
-        """Test {component_name} initialization."""
-        component = {component_name}()
-        assert component is not None
-
-    def test_process(self):
-        """Test {component_name} process method."""
-        component = {component_name}()
-        result = component.process()
-        # Add assertions based on expected behavior
-        assert result is not None or result is None  # Update as needed
-'''
+            supporting_files[f"test_{component_name.lower()}.py"] = (
+                self.template_manager.render_template(
+                    "tests/python_test.py.j2", test_context
+                )
+            )
 
         return supporting_files
+
+    def _generate_arg_types(self, props: List[Dict[str, Any]]) -> str:
+        """Generate Storybook argTypes configuration."""
+        if not props:
+            return ""
+
+        arg_types = []
+        for prop in props:
+            prop_name = prop.get("name", "")
+            prop_type = prop.get("type", "string")
+
+            control = "text"
+            if prop_type in ["boolean", "bool"]:
+                control = "boolean"
+            elif prop_type in ["number", "int", "float"]:
+                control = "number"
+            elif prop_type in ["array", "list"]:
+                control = "object"
+
+            arg_types.append(f'    {prop_name}: {{ control: "{control}" }}')
+
+        return ",\n".join(arg_types)
+
+    def _generate_default_args(self, props: List[Dict[str, Any]]) -> str:
+        """Generate default args for Storybook stories."""
+        if not props:
+            return ""
+
+        args = []
+        for prop in props:
+            prop_name = prop.get("name", "")
+            prop_type = prop.get("type", "string")
+
+            default_value = "''"
+            if prop_type in ["boolean", "bool"]:
+                default_value = "false"
+            elif prop_type in ["number", "int"]:
+                default_value = "0"
+            elif prop_type in ["float"]:
+                default_value = "0.0"
+            elif prop_type in ["array", "list"]:
+                default_value = "[]"
+            elif prop_type in ["object"]:
+                default_value = "{}"
+
+            args.append(f"    {prop_name}: {default_value}")
+
+        return ",\n".join(args)
+
+    def _generate_interactive_args(self, props: List[Dict[str, Any]]) -> str:
+        """Generate interactive args for Storybook stories."""
+        if not props:
+            return ""
+
+        args = []
+        for prop in props:
+            prop_name = prop.get("name", "")
+            prop_type = prop.get("type", "string")
+
+            interactive_value = "'Interactive'"
+            if prop_type in ["boolean", "bool"]:
+                interactive_value = "true"
+            elif prop_type in ["number", "int"]:
+                interactive_value = "42"
+            elif prop_type in ["float"]:
+                interactive_value = "3.14"
+            elif prop_type in ["array", "list"]:
+                interactive_value = "['item1', 'item2']"
+            elif prop_type in ["object"]:
+                interactive_value = "{ key: 'value' }"
+
+            args.append(f"    {prop_name}: {interactive_value}")
+
+        return ",\n".join(args)
+
+    def _scan_storybook_files(self, project_path, scan_type):
+        """Scan for Storybook files and configuration."""
+        import re
+        from pathlib import Path
+
+        storybook_data = {
+            "config_files": [],
+            "story_files": [],
+            "components_with_stories": [],
+            "components_without_stories": [],
+            "coverage": {
+                "percentage": 0,
+                "total_components": 0,
+                "components_with_stories": 0,
+            },
+        }
+
+        try:
+            # Find Storybook configuration files
+            config_patterns = [".storybook/**/*", "storybook.config.*", ".storybook.js"]
+            for pattern in config_patterns:
+                config_files = list(project_path.rglob(pattern))
+                storybook_data["config_files"].extend([str(f) for f in config_files])
+
+            # Find story files
+            story_patterns = [
+                "*.stories.js",
+                "*.stories.tsx",
+                "*.stories.ts",
+                "*.story.js",
+            ]
+            story_files = []
+            for pattern in story_patterns:
+                story_files.extend(list(project_path.rglob(pattern)))
+
+            storybook_data["story_files"] = [str(f) for f in story_files]
+
+            # Find components
+            component_patterns = ["*.jsx", "*.tsx", "*.vue"]
+            components = []
+            for pattern in component_patterns:
+                components.extend(list(project_path.rglob(pattern)))
+
+            # Filter out story files and test files from components
+            component_files = [
+                f
+                for f in components
+                if not any(
+                    story_pattern.replace("*", "").replace(".", "") in f.name
+                    for story_pattern in story_patterns
+                )
+                and "test" not in f.name.lower()
+                and "__tests__" not in str(f)
+            ]
+
+            # Check which components have stories
+            components_with_stories = []
+            components_without_stories = []
+
+            for component in component_files:
+                component_name = component.stem
+                has_story = any(
+                    component_name in story_file
+                    for story_file in storybook_data["story_files"]
+                )
+
+                if has_story:
+                    components_with_stories.append(str(component))
+                else:
+                    components_without_stories.append(str(component))
+
+            storybook_data["components_with_stories"] = components_with_stories
+            storybook_data["components_without_stories"] = components_without_stories
+
+            # Calculate coverage
+            total_components = len(component_files)
+            components_with_stories_count = len(components_with_stories)
+            coverage_percentage = (
+                components_with_stories_count / max(total_components, 1)
+            ) * 100
+
+            storybook_data["coverage"] = {
+                "percentage": round(coverage_percentage, 1),
+                "total_components": total_components,
+                "components_with_stories": components_with_stories_count,
+                "components_without_stories": len(components_without_stories),
+            }
+
+        except Exception as e:
+            logger.error(f"Error scanning Storybook files: {e}")
+
+        return storybook_data
+
+    def _generate_storybook_suggestions(self, component_path, suggestion_type):
+        """Generate Storybook suggestions for a component."""
+        from pathlib import Path
+
+        suggestions = {
+            "component_path": str(component_path),
+            "suggestions": [],
+            "story_templates": [],
+            "best_practices": [],
+        }
+
+        try:
+            component_name = component_path.stem
+
+            # Read component file for analysis
+            with open(component_path, "r", encoding="utf-8") as f:
+                content = f.read()
+
+            # Generate story file path
+            story_file_path = component_path.parent / f"{component_name}.stories.tsx"
+
+            if suggestion_type == "stories":
+                # Story suggestions
+                suggestions["suggestions"] = [
+                    {
+                        "type": "story_creation",
+                        "title": "Create main story file",
+                        "description": f"Create {story_file_path.name} with basic story configurations",
+                        "priority": "high",
+                    },
+                    {
+                        "type": "story_variants",
+                        "title": "Add story variants",
+                        "description": "Create stories for different component states (default, loading, error)",
+                        "priority": "medium",
+                    },
+                    {
+                        "type": "interactive_stories",
+                        "title": "Add interactive controls",
+                        "description": "Configure argTypes for interactive component testing",
+                        "priority": "medium",
+                    },
+                ]
+
+                # Generate story templates
+                if "props" in content or "interface" in content:
+                    # Component has props - create interactive story
+                    story_template = self.template_manager.render_template(
+                        "storybook/react_story.stories.tsx.j2",
+                        {
+                            "component_name": component_name,
+                            "component_file": component_name,
+                            "story_title": f"Components/{component_name}",
+                            "arg_types": [],
+                            "default_args": {},
+                            "additional_stories": [],
+                        },
+                    )
+
+                    suggestions["story_templates"].append(
+                        {
+                            "file_name": f"{component_name}.stories.tsx",
+                            "content": story_template,
+                            "type": "interactive",
+                        }
+                    )
+
+            elif suggestion_type == "docs":
+                # Documentation suggestions
+                suggestions["suggestions"] = [
+                    {
+                        "type": "component_docs",
+                        "title": "Add component documentation",
+                        "description": "Document component purpose, props, and usage examples",
+                        "priority": "high",
+                    },
+                    {
+                        "type": "addon_docs",
+                        "title": "Configure Docs addon",
+                        "description": "Set up automatic documentation generation with @storybook/addon-docs",
+                        "priority": "medium",
+                    },
+                ]
+
+            elif suggestion_type == "addon":
+                # Addon suggestions
+                suggestions["suggestions"] = [
+                    {
+                        "type": "controls_addon",
+                        "title": "Add Controls addon",
+                        "description": "Enable dynamic prop editing with @storybook/addon-controls",
+                        "priority": "high",
+                    },
+                    {
+                        "type": "actions_addon",
+                        "title": "Add Actions addon",
+                        "description": "Log component actions and events with @storybook/addon-actions",
+                        "priority": "medium",
+                    },
+                    {
+                        "type": "accessibility_addon",
+                        "title": "Add A11y addon",
+                        "description": "Test accessibility with @storybook/addon-a11y",
+                        "priority": "medium",
+                    },
+                ]
+
+            # Best practices suggestions
+            suggestions["best_practices"] = [
+                "Use descriptive story names that explain the component state",
+                "Group related stories under the same component hierarchy",
+                "Document component props with JSDoc comments",
+                "Include edge cases and error states in stories",
+                "Use argTypes to make stories interactive",
+                "Add accessibility testing with addon-a11y",
+                "Create visual regression tests with Chromatic",
+            ]
+
+        except Exception as e:
+            logger.error(f"Error generating Storybook suggestions: {e}")
+
+        return suggestions

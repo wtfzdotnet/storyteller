@@ -1,0 +1,232 @@
+{
+  "repositories": [
+    {
+      "name": "recipe-backend",
+      "url": "https://github.com/recipeauthority/recipe-backend",
+      "language": "python",
+      "platforms": [],
+      "ruleset": "python_default",
+      "description": "Python Flask backend for Recipe Authority Platform"
+    },
+    {
+      "name": "recipe-frontend-react",
+      "url": "https://github.com/recipeauthority/recipe-frontend-react",
+      "language": "typescript",
+      "platforms": ["react", "tailwind", "vite"],
+      "ruleset": "typescript_react_vite",
+      "description": "React frontend with TypeScript, Tailwind CSS, and Vite"
+    },
+    {
+      "name": "recipe-mobile-app",
+      "url": "https://github.com/recipeauthority/recipe-mobile-app",
+      "language": "typescript",
+      "platforms": ["react", "storybook", "jest"],
+      "ruleset": "typescript_react_tailwind",
+      "description": "React Native mobile app with Storybook and Jest testing"
+    },
+    {
+      "name": "recipe-shared-components",
+      "url": "https://github.com/recipeauthority/recipe-shared-components",
+      "language": "typescript",
+      "platforms": ["react", "storybook", "vitest", "tailwind"],
+      "ruleset": "component_library",
+      "description": "Shared React component library with comprehensive testing"
+    }
+  ],
+  "rulesets": {
+    "python_default": {
+      "name": "Python Default Ruleset",
+      "description": "Standard Python development practices with pytest and documentation",
+      "language": "python",
+      "platforms": [],
+      "actions": [
+        {
+          "name": "generate_tests",
+          "description": "Generate pytest test files for new classes and functions",
+          "enabled": true,
+          "parameters": {
+            "test_framework": "pytest",
+            "coverage_threshold": 80,
+            "include_docstring_tests": true
+          }
+        },
+        {
+          "name": "generate_documentation",
+          "description": "Generate docstrings and README updates",
+          "enabled": true,
+          "parameters": {
+            "style": "google",
+            "include_examples": true
+          }
+        },
+        {
+          "name": "suggest_refactoring",
+          "description": "Suggest code improvements and refactoring opportunities",
+          "enabled": true,
+          "parameters": {
+            "complexity_threshold": 10,
+            "suggest_type_hints": true
+          }
+        }
+      ]
+    },
+    "typescript_react_vite": {
+      "name": "TypeScript React with Vite",
+      "description": "Modern React development with TypeScript, Vite, and Tailwind CSS",
+      "language": "typescript",
+      "platforms": ["react", "vite", "tailwind"],
+      "actions": [
+        {
+          "name": "generate_component_tests",
+          "description": "Generate React Testing Library tests for components",
+          "enabled": true,
+          "parameters": {
+            "test_framework": "vitest",
+            "include_accessibility_tests": true,
+            "include_snapshot_tests": false
+          }
+        },
+        {
+          "name": "generate_storybook_stories",
+          "description": "Generate Storybook stories for components",
+          "enabled": true,
+          "parameters": {
+            "include_controls": true,
+            "include_accessibility_addon": true,
+            "generate_variants": true
+          }
+        },
+        {
+          "name": "optimize_bundle",
+          "description": "Suggest Vite configuration optimizations",
+          "enabled": true,
+          "parameters": {
+            "analyze_imports": true,
+            "suggest_lazy_loading": true,
+            "check_tree_shaking": true
+          }
+        },
+        {
+          "name": "tailwind_optimization",
+          "description": "Suggest Tailwind CSS optimizations and utility usage",
+          "enabled": true,
+          "parameters": {
+            "suggest_custom_utilities": true,
+            "check_unused_classes": true,
+            "recommend_component_patterns": true
+          }
+        }
+      ]
+    },
+    "typescript_react_tailwind": {
+      "name": "TypeScript React with Tailwind",
+      "description": "React development with TypeScript and Tailwind CSS",
+      "language": "typescript", 
+      "platforms": ["react", "tailwind"],
+      "actions": [
+        {
+          "name": "generate_component_tests",
+          "description": "Generate Jest/React Testing Library tests",
+          "enabled": true,
+          "parameters": {
+            "test_framework": "jest",
+            "include_accessibility_tests": true,
+            "include_snapshot_tests": true
+          }
+        },
+        {
+          "name": "generate_storybook_stories",
+          "description": "Generate comprehensive Storybook stories",
+          "enabled": true,
+          "parameters": {
+            "include_controls": true,
+            "include_accessibility_addon": true,
+            "generate_variants": true,
+            "include_responsive_variants": true
+          }
+        },
+        {
+          "name": "accessibility_checks",
+          "description": "Generate accessibility-focused tests and suggestions",
+          "enabled": true,
+          "parameters": {
+            "include_aria_tests": true,
+            "suggest_semantic_html": true,
+            "check_color_contrast": true
+          }
+        }
+      ]
+    },
+    "component_library": {
+      "name": "Component Library Development",
+      "description": "Comprehensive tooling for shared component library development",
+      "language": "typescript",
+      "platforms": ["react", "storybook", "vitest", "tailwind"],
+      "actions": [
+        {
+          "name": "generate_comprehensive_tests",
+          "description": "Generate extensive test coverage including unit, integration, and visual tests",
+          "enabled": true,
+          "parameters": {
+            "test_framework": "vitest",
+            "include_accessibility_tests": true,
+            "include_visual_regression_tests": true,
+            "include_performance_tests": true,
+            "coverage_threshold": 95
+          }
+        },
+        {
+          "name": "generate_advanced_storybook",
+          "description": "Generate comprehensive Storybook documentation with all addons",
+          "enabled": true,
+          "parameters": {
+            "include_controls": true,
+            "include_accessibility_addon": true,
+            "include_docs_addon": true,
+            "include_design_tokens": true,
+            "generate_interaction_tests": true
+          }
+        },
+        {
+          "name": "api_documentation",
+          "description": "Generate comprehensive API documentation",
+          "enabled": true,
+          "parameters": {
+            "generate_prop_tables": true,
+            "include_usage_examples": true,
+            "generate_migration_guides": true
+          }
+        },
+        {
+          "name": "design_system_integration",
+          "description": "Ensure consistency with design system guidelines",
+          "enabled": true,
+          "parameters": {
+            "validate_design_tokens": true,
+            "suggest_component_composition": true,
+            "check_naming_conventions": true
+          }
+        }
+      ]
+    }
+  },
+  "llm": {
+    "provider": "openai",
+    "model": "gpt-4",
+    "api_key_env": "OPENAI_API_KEY",
+    "temperature": 0.7,
+    "max_tokens": 4000
+  },
+  "github": {
+    "token_env": "GITHUB_TOKEN",
+    "default_branch": "main",
+    "auto_assign": true,
+    "auto_label": true
+  },
+  "workflow": {
+    "auto_create_issues": true,
+    "auto_assign_reviewers": true,
+    "enable_automation": true,
+    "notification_webhook": null
+  }
+}

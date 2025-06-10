@@ -448,6 +448,97 @@ def list_roles(
         sys.exit(1)
 
 
+# MCP server commands
+mcp_app = typer.Typer(help="MCP (Model Context Protocol) server commands")
+app.add_typer(mcp_app, name="mcp")
+
+
+@mcp_app.command("start")
+def start_mcp_server(
+    transport: str = typer.Option(
+        "stdio", "--transport", "-t", help="Transport type (stdio, websocket)"
+    ),
+    host: str = typer.Option("localhost", "--host", help="Host for websocket server"),
+    port: int = typer.Option(8765, "--port", help="Port for websocket server"),
+    debug: bool = typer.Option(False, "--debug", help="Enable debug logging"),
+):
+    """Start MCP server for AI assistant integration."""
+
+    setup_logging(debug)
+
+    async def _start_server():
+        try:
+            from mcp_server import run_mcp_server
+
+            console.print(
+                f"[green]Starting MCP server with {transport} transport...[/green]"
+            )
+
+            await run_mcp_server(transport=transport, host=host, port=port)
+
+        except Exception as e:
+            console.print(f"[red]✗ Failed to start MCP server:[/red] {e}")
+            if debug:
+                console.print_exception()
+            sys.exit(1)
+
+    asyncio.run(_start_server())
+
+
+@mcp_app.command("test")
+def test_mcp_server(
+    method: str = typer.Argument(..., help="MCP method to test"),
+    params_file: Optional[Path] = typer.Option(
+        None, "--params", help="JSON file with parameters"
+    ),
+    debug: bool = typer.Option(False, "--debug", help="Enable debug logging"),
+):
+    """Test MCP server functionality."""
+
+    setup_logging(debug)
+
+    async def _test_server():
+        try:
+            from mcp_server import MCPRequest, MCPStoryServer
+
+            # Load parameters
+            params = {}
+            if params_file and params_file.exists():
+                import json
+
+                with open(params_file) as f:
+                    params = json.load(f)
+
+            # Create server and request
+            server = MCPStoryServer()
+            request = MCPRequest(id="test_request", method=method, params=params)
+
+            console.print(f"[blue]Testing MCP method:[/blue] {method}")
+
+            # Execute request
+            response = await server.handle_request(request)
+
+            if response.error:
+                console.print(f"[red]✗ Error:[/red] {response.error}")
+            else:
+                console.print("[green]✓ Success![/green]")
+
+                # Pretty print result
+                import json
+
+                result_json = json.dumps(response.result, indent=2, default=str)
+                syntax = Syntax(result_json, "json", theme="monokai", line_numbers=True)
+                console.print(syntax)
+
+        except Exception as e:
+            console.print(f"[red]✗ Failed to test MCP server:[/red] {e}")
+            if debug:
+                console.print_exception()
+            sys.exit(1)
+
+    asyncio.run(_test_server())
+
+
 # Configuration and validation commands
 @app.command("validate")
 def validate_configuration(

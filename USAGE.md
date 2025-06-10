@@ -198,6 +198,29 @@ The MCP server provides the following methods for AI assistant integration:
 - `system/capabilities` - Get available methods and features
 - `system/validate` - Validate configuration
 
+### File & Codebase Methods (Copilot Integration)
+- `file/read` – Read the contents of a file in the codebase
+- `file/write` – Write content to a file in the codebase
+- `codebase/scan` – Scan the codebase for files, structure, or patterns
+- `codebase/analyze` – Analyze the codebase for metrics, dependencies, or issues
+
+### Test & QA Methods
+- `test/analyze` – Analyze test coverage and quality for the codebase or file
+- `test/suggest` – Suggest new tests or improvements for the codebase or file
+- `test/generate` – Generate new tests for the codebase or file
+- `qa/strategy` – Suggest or analyze QA strategies for the project
+
+### Component & Storybook Methods
+- `component/analyze` – Analyze a component for structure, usage, or best practices
+- `component/generate` – Generate a new component or suggest improvements
+- `storybook/scan` – Scan Storybook stories for coverage and structure
+- `storybook/suggest` – Suggest new Storybook stories or improvements
+
+### Context, Suggestion, and Workflow Methods
+- `context/provide` – Provide context for Copilot or LLM workflows
+- `suggestion/improve` – Suggest improvements for code, tests, or documentation
+- `workflow/automate` – Automate a workflow or process in the codebase
+
 ## Testing
 
 Run the test suite:

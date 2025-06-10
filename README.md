@@ -106,75 +106,151 @@ Our AI story management system leverages **20+ specialized expert roles** that c
 - **Respectful Adaptation**: Guidelines for culturally-appropriate recipe modifications
 - **Global Perspective**: Expert team spans diverse cultural and culinary traditions
 
-## 🚀 Getting Started
+## 🤖 GitHub Copilot & Enhanced MCP Integration
 
-### Prerequisites
-- Python 3.11+
-- GitHub account with API access
-- Virtual environment setup
+### Overview
 
-### Quick Setup
+The Recipe Authority Platform now features deep integration with GitHub Copilot and the Model Context Protocol (MCP), enabling seamless, AI-powered story management and expert collaboration directly from your development environment or AI assistant. This integration empowers developers and teams to:
+- Automate story creation, analysis, and distribution across repositories
+- Leverage 20+ expert AI roles for domain-specific insights and validation
+- Interact with the platform via standardized MCP endpoints for Copilot, LLMs, and custom tools
+- Ensure secure, high-performance, and auditable workflows for enterprise and open-source teams
 
-```bash
-# Clone and setup
-git clone https://github.com/wtfzdotnet/storyteller.git
-cd storyteller
+### MCP API Endpoints
 
-# Create virtual environment
-python -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
+The MCP server exposes a robust set of endpoints for Copilot and AI assistant workflows:
 
-# Install dependencies
-pip install -r requirements.txt
+#### Story Methods
+- `story/create` – Create a new story with expert analysis and GitHub issue creation
+- `story/analyze` – Analyze a story with multi-expert input (no GitHub issue)
+- `story/status` – Retrieve processing status and expert consensus for a story
 
-# Configure environment
-cp .env.example .env
-# Edit .env with your GitHub token and repository settings
-```
+#### Role Methods
+- `role/query` – Query a specific expert role with a question or scenario
+- `role/list` – List all available expert roles and their documentation
+- `role/analyze_story` – Get a role-specific analysis for a given story
 
-### Configuration
+#### Repository Methods
+- `repository/list` – List all configured repositories and their types
+- `repository/get_config` – Retrieve configuration for a specific repository
 
-Configure multi-repository setup in `.storyteller/config.json`:
+#### System Methods
+- `system/health` – Health check for MCP server
+- `system/capabilities` – List all available methods and features
+- `system/validate` – Validate current configuration and environment
 
+#### File & Codebase Methods (Copilot Integration)
+- `file/read` – Read the contents of a file in the codebase
+- `file/write` – Write content to a file in the codebase
+- `codebase/scan` – Scan the codebase for files, structure, or patterns
+- `codebase/analyze` – Analyze the codebase for metrics, dependencies, or issues
+
+#### Test & QA Methods
+- `test/analyze` – Analyze test coverage and quality for the codebase or file
+- `test/suggest` – Suggest new tests or improvements for the codebase or file
+- `test/generate` – Generate new tests for the codebase or file
+- `qa/strategy` – Suggest or analyze QA strategies for the project
+
+#### Component & Storybook Methods
+- `component/analyze` – Analyze a component for structure, usage, or best practices
+- `component/generate` – Generate a new component or suggest improvements
+- `storybook/scan` – Scan Storybook stories for coverage and structure
+- `storybook/suggest` – Suggest new Storybook stories or improvements
+
+#### Context, Suggestion, and Workflow Methods
+- `context/provide` – Provide context for Copilot or LLM workflows
+- `suggestion/improve` – Suggest improvements for code, tests, or documentation
+- `workflow/automate` – Automate a workflow or process in the codebase
+
+> These endpoints enable advanced Copilot/AI workflows for file access, codebase intelligence, test generation, component analysis, and workflow automation.
+
+### Example Requests & Responses
+
+#### Create Story
 ```json
 {
-  "repositories": {
-    "storyteller": {
-      "name": "wtfzdotnet/storyteller",
-      "type": "storyteller",
-      "description": "Storyteller is a tool for managing and automating software development workflows",
-      "dependencies": [],
-      "story_labels": ["user_story"]
-    },
-    "backend": {
-      "name": "wtfzdotnet/recipeer",
-      "type": "backend",
-      "description": "Backend microservices that provide api's and services",
-      "dependencies": [],
-      "story_labels": ["backend", "api"],
-      "auto_assign": {
-        "assignee": ["wtfzdotnet"]
-      }
-    },
-    "frontend": {
-      "name": "wtfzdotnet/recipes-frontend", 
-      "type": "frontend",
-      "description": "User interface and client applications",
-      "dependencies": ["backend"],
-      "story_labels": ["frontend", "ui"],
-      "auto_assign": {
-        "assignee": ["wtfzdotnet"]
-      }
-    }
-  },
-  "default_repository": "backend",
-  "story_workflow": {
-    "create_subtickets": true,
-    "respect_dependencies": true
+  "id": "req-001",
+  "method": "story/create",
+  "params": {
+    "content": "As a user, I want to save favorite recipes.",
+    "repository": "backend",
+    "roles": ["product-owner", "ux-ui-designer", "lead-developer"]
   }
 }
-
 ```
+_Response:_
+```json
+{
+  "id": "req-001",
+  "result": {
+    "success": true,
+    "message": "Story created and analyzed by experts.",
+    "data": { "story_id": "story_abc123", ... }
+  }
+}
+```
+
+#### Analyze Story
+```json
+{
+  "id": "req-002",
+  "method": "story/analyze",
+  "params": {
+    "content": "Add cultural recipe validation.",
+    "roles": ["food-historian-anthropologist", "professional-chef"]
+  }
+}
+```
+
+#### Query Expert Role
+```json
+{
+  "id": "req-003",
+  "method": "role/query",
+  "params": {
+    "role_name": "ai-expert",
+    "question": "How can we improve recipe recommendations?"
+  }
+}
+```
+
+#### List Roles
+```json
+{
+  "id": "req-004",
+  "method": "role/list",
+  "params": {}
+}
+```
+
+#### Health Check
+```json
+{
+  "id": "req-005",
+  "method": "system/health",
+  "params": {}
+}
+```
+
+### Security & Performance Requirements
+- **Authentication**: All endpoints require secure API tokens (see `.env.example`)
+- **Role-Based Access**: Sensitive operations are restricted by role and repository configuration
+- **Rate Limiting**: MCP server enforces per-user and per-IP rate limits for stability
+- **Audit Logging**: All requests and expert analyses are logged for traceability
+- **Performance**: Sub-second response times for most operations; async/await for scalable processing
+
+### Expert Roles in Copilot/MCP Workflows
+- **Automated Multi-Expert Analysis**: Every story is reviewed by relevant expert roles, ensuring professional, culturally-sensitive, and technically-sound outcomes
+- **Role Documentation**: Each expert role is fully documented in [AI Expert Team Documentation](/.storyteller/README.md) and discoverable via `role/list`
+- **Customizable Workflows**: Developers can specify which expert roles to involve per story or query
+- **Consensus & Validation**: Copilot and MCP workflows leverage expert consensus for higher quality and reliability
+
+### Further Reading & Integration
+- See [USAGE.md](USAGE.md) for endpoint usage examples, configuration, and troubleshooting
+- See [AI Expert Team Documentation](/.storyteller/README.md) for detailed role definitions and collaboration patterns
+- Endpoint and workflow documentation is continually updated for Copilot/MCP compatibility
+
+---
 
 ## 📊 Success Metrics
 

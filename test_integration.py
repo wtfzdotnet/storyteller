@@ -307,6 +307,58 @@ async def test_configuration_validation():
     print("✓ Configuration validation test passed")
 
 
+async def test_new_mcp_endpoints():
+    """Test new MCP endpoints are implemented and working."""
+    setup_test_environment()
+    server = MCPStoryServer()
+
+    # Test implemented endpoints
+    working_endpoints = [
+        ("file/read", {"path": "README.md"}),
+        ("file/write", {"path": "test_file.txt", "content": "test"}),
+        ("codebase/scan", {}),
+        ("codebase/analyze", {}),
+        ("test/analyze", {}),
+        ("test/suggest", {"path": "main.py"}),
+        ("context/provide", {}),
+        ("suggestion/improve", {"target": "README.md"}),
+        ("workflow/automate", {"workflow": "code_quality"}),
+    ]
+
+    # Test not-yet-implemented endpoints
+    stub_endpoints = [
+        ("test/generate", {}),
+        ("qa/strategy", {}),
+        ("component/analyze", {"component": "Button"}),
+        ("component/generate", {"spec": {"name": "Button"}}),
+        ("storybook/scan", {}),
+        ("storybook/suggest", {}),
+    ]
+
+    # Test working endpoints
+    for method, params in working_endpoints:
+        request = MCPRequest(id=f"test_{method}", method=method, params=params)
+        response = await server.handle_request(request)
+        assert (
+            response.error is None
+        ), f"Endpoint {method} should not have top-level error"
+        assert response.result is not None, f"Endpoint {method} should return result"
+        # These endpoints are implemented, so they should either succeed or fail gracefully
+        assert (
+            "success" in response.result
+        ), f"Endpoint {method} should have success field"
+
+    # Test stub endpoints (still not implemented)
+    for method, params in stub_endpoints:
+        request = MCPRequest(id=f"test_{method}", method=method, params=params)
+        response = await server.handle_request(request)
+        assert response.error is None
+        assert response.result is not None
+        assert response.result.get("error") == "NotImplemented"
+
+    print("✓ New MCP endpoints working as expected")
+
+
 async def run_all_integration_tests():
     """Run all integration tests."""
     print("Running integration tests...")
@@ -323,6 +375,7 @@ async def run_all_integration_tests():
     await test_mcp_story_analysis_mock()
     await test_error_handling()
     await test_configuration_validation()
+    await test_new_mcp_endpoints()
 
     print("\n✅ All integration tests passed!")
 

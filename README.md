@@ -73,26 +73,12 @@ Our AI story management system leverages **20+ specialized expert roles** that c
 
 ### Modern Technology Stack
 
-- **Domain-Driven Design (DDD)** with **Hexagonal Architecture** for scalable, maintainable systems
-- **PHP 8.4** with **Symfony 7.x** and **API Platform 4.0** for robust backend services  
+- **Golang microservices** that expose REST api endpoints that are consumed on the frontend
+- **React+Vite+Material UI+Tailwind** a very well tested combination for a powerful frontend
+- **Storybook** the frontend also contains storybook, which must be meticioulsy maintained with new smaller components, cards, etc.
 - **Event-driven architecture** with **CQRS** patterns for complex data flows
 - **Progressive bounded contexts**: Recipe → Nutrition → User → Inventory → MealPlanning → Shopping → Cultural
 - **AI-First Integration**: Machine learning embedded throughout platform architecture
-
-### Python AI Core Components
-
-```python
-# Core AI story management components
-├── story_manager.py          # Orchestrates expert role coordination
-├── llm_handler.py           # GitHub Models integration for AI responses  
-├── github_handler.py        # GitHub API service with async/await patterns
-├── automation/
-│   ├── workflow_processor.py    # CLI interface and GitHub Actions entry
-│   └── label_manager.py        # Automated labeling and workflow management
-└── .storyteller/
-    ├── config.json             # Multi-repository configuration
-    └── roles/                  # 20+ expert role definitions
-```
 
 ## ⚡ Key Features
 
@@ -172,111 +158,6 @@ Configure multi-repository setup in `.storyteller/config.json`:
 }
 ```
 
-## 🎯 Usage Examples
-
-### Create Expert-Analyzed Stories
-
-```bash
-# Create story with AI expert team analysis
-python main.py story create "Cultural recipe validation system" \
-  --roles "Food Historian/Anthropologist,Professional Chef,AI Expert"
-
-# Multi-repository story creation
-python main.py story create-multi "Recipe search with cultural filters" \
-  --repos backend,frontend
-
-# List expert roles
-python main.py story list-roles
-
-# Check repository configuration  
-python main.py story list-repositories
-```
-
-### AI Expert Team Workflow
-
-```bash
-# 1. Initial expert analysis
-python main.py story analyze "Meal planning for dietary restrictions" \
-  --experts "Registered Dietitian,UX/UI Designer,System Architect"
-
-# 2. Iterative refinement
-python main.py story iterate [story-id] \
-  --additional-experts "Security Expert,Product Owner"
-
-# 3. Consensus validation
-python main.py story check-agreement [story-id]
-
-# 4. Final implementation story
-python main.py story finalize [story-id]
-```
-
-### Professional Development Example
-
-For a recipe recommendation feature:
-
-```markdown
-**Story**: As a home cook, I want culturally-aware recipe recommendations 
-so that I can explore authentic cuisines respectfully.
-
-**Expert Analysis:**
-- **AI Expert**: ML recommendation algorithms with cultural embeddings
-- **Food Historian**: Cultural authenticity validation requirements  
-- **Professional Chef**: Recipe quality and technique standards
-- **UX/UI Designer**: Cultural-sensitive interface design
-- **Security Expert**: Cultural data privacy and protection
-```
-
-## 📋 Development Standards
-
-### Mandatory Pre-Commit Workflow
-
-**All code changes must pass these checks before committing:**
-
-```bash
-# 1. Format with Black
-black .
-
-# 2. Sort imports with isort
-isort .
-
-# 3. Validate syntax
-python test_syntax.py
-
-# 4. Check critical errors (WILL FAIL CI)
-flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics --exclude=venv
-
-# 5. Verify compliance
-black --check --diff .
-isort --check-only --diff .
-
-# 6. If all pass, commit
-git add -A && git commit -m "Your message"
-```
-
-### Quality Standards
-- **Line Length**: 88 characters (Black standard)
-- **Import Sorting**: isort with Black profile
-- **Linting**: flake8 compliance with zero critical errors
-- **Documentation**: Comprehensive docstrings and type hints
-- **Testing**: Full test coverage for story processing workflows
-
-## 🤝 Contributing
-
-### Expert Role Development
-
-1. **Add New Roles**: Create detailed role files in `.storyteller/roles/`
-2. **Role Structure**: Follow established format with responsibilities, focus areas, collaboration notes
-3. **Integration Testing**: Validate role integration with story creation workflows
-4. **Documentation**: Update AI expert team documentation and cross-references
-
-### Code Contributions
-
-1. **Fork and Branch**: Create feature branches from main
-2. **Expert Analysis**: Use AI expert team for feature validation
-3. **Quality Compliance**: Pass all pre-commit checks
-4. **Cultural Sensitivity**: Ensure culturally-appropriate implementations
-5. **Pull Request**: Include expert analysis and comprehensive testing
-
 ## 📊 Success Metrics
 
 ### Platform Authority Metrics
@@ -294,9 +175,6 @@ git add -A && git commit -m "Your message"
 ## 📚 Documentation
 
 - **[AI Expert Team Documentation](/.storyteller/README.md)**: Comprehensive expert role definitions and collaboration guidelines
-- **[Setup Guide](/SETUP.md)**: Detailed setup and configuration instructions
-- **[API Documentation](/docs/api.md)**: Complete API reference for story management
-- **[Cultural Guidelines](/docs/cultural-guidelines.md)**: Cultural sensitivity and authenticity standards
 
 ## 🔮 Future Vision
 

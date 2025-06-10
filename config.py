@@ -26,8 +26,9 @@ class LanguageType(Enum):
 
 
 class PlatformChoice(Enum):
-    """Supported platform configurations for TypeScript/JavaScript repositories."""
+    """Supported platform configurations for different repositories."""
 
+    # Frontend/JavaScript platforms
     REACT = "react"
     TAILWIND = "tailwind"
     VITE = "vite"
@@ -38,6 +39,18 @@ class PlatformChoice(Enum):
     JEST = "jest"
     CYPRESS = "cypress"
     PLAYWRIGHT = "playwright"
+
+    # Go/Backend platforms
+    GOKIT = "gokit"
+    GIN = "gin"
+    ECHO = "echo"
+    FIBER = "fiber"
+    GRPC = "grpc"
+    PROTOBUF = "protobuf"
+    DOCKER = "docker"
+    KUBERNETES = "kubernetes"
+    TESTIFY = "testify"
+    GORM = "gorm"
 
 
 @dataclass
@@ -346,6 +359,69 @@ def load_default_rulesets() -> Dict[str, Ruleset]:
             "autoprefixer",
             "jest",
             "@testing-library/react",
+        ],
+    )
+
+    # Go + Go kit ruleset
+    rulesets["go-gokit"] = Ruleset(
+        name="Go with Go Kit",
+        description="Ruleset for Go projects using Go kit microservice framework",
+        language=LanguageType.GO,
+        platforms=[PlatformChoice.GOKIT, PlatformChoice.GRPC, PlatformChoice.DOCKER],
+        actions=[
+            RulesetAction(
+                name="service_generation",
+                description="Generate Go kit service interfaces and implementations",
+                parameters={
+                    "framework": "gokit",
+                    "include_middleware": True,
+                    "include_metrics": True,
+                    "include_logging": True,
+                },
+            ),
+            RulesetAction(
+                name="endpoint_generation",
+                description="Generate Go kit endpoints for service methods",
+                parameters={
+                    "transport": "http",
+                    "include_validation": True,
+                },
+            ),
+            RulesetAction(
+                name="transport_generation",
+                description="Generate HTTP transport layer for endpoints",
+                parameters={
+                    "router": "gorilla/mux",
+                    "middleware": ["logging", "cors", "recovery"],
+                },
+            ),
+            RulesetAction(
+                name="test_generation",
+                description="Generate Go tests with testify",
+                parameters={
+                    "framework": "testify",
+                    "include_benchmarks": True,
+                    "mock_external_deps": True,
+                },
+            ),
+            RulesetAction(
+                name="docker_generation",
+                description="Generate Dockerfile and docker-compose configurations",
+                parameters={
+                    "base_image": "alpine",
+                    "include_health_check": True,
+                },
+            ),
+        ],
+        file_patterns=["*.go", "**/*.go"],
+        dependencies=[
+            "github.com/go-kit/kit",
+            "github.com/gorilla/mux",
+            "github.com/go-kit/log",
+        ],
+        dev_dependencies=[
+            "github.com/stretchr/testify",
+            "github.com/golang/mock",
         ],
     )
 

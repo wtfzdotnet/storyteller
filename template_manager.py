@@ -31,6 +31,8 @@ class TemplateManager:
                     str(self.template_dir / "typescript"),
                     str(self.template_dir / "react"),
                     str(self.template_dir / "vue"),
+                    str(self.template_dir / "go"),
+                    str(self.template_dir / "gokit"),
                 ]
             ),
             trim_blocks=True,
@@ -51,6 +53,8 @@ class TemplateManager:
             self.template_dir / "typescript",
             self.template_dir / "react",
             self.template_dir / "vue",
+            self.template_dir / "go",
+            self.template_dir / "gokit",
         ]
 
         for directory in directories:
@@ -297,6 +301,263 @@ export const {{ story.name }}: Story = {
   },
 {% endif %}
 };
+
+{% endfor %}
+{% endif %}
+""",
+            # Go kit templates
+            "go/service.go.j2": """// Package {{ package_name }} provides {{ service_description }}.
+package {{ package_name }}
+
+import (
+	"context"
+{% if imports %}
+{% for import_line in imports %}
+	"{{ import_line }}"
+{% endfor %}
+{% endif %}
+)
+
+// {{ service_name }}Service represents the {{ service_name }} service interface.
+type {{ service_name }}Service interface {
+{% for method in methods %}
+	{{ method.name }}(ctx context.Context{% for param in method.params %}, {{ param.name }} {{ param.type }}{% endfor %}) ({% for result in method.results %}{{ result.type }}{% if not loop.last %}, {% endif %}{% endfor %})
+{% endfor %}
+}
+
+// {{ service_name.lower() }}Service is a concrete implementation of {{ service_name }}Service.
+type {{ service_name.lower() }}Service struct {
+{% for field in fields %}
+	{{ field.name }} {{ field.type }}
+{% endfor %}
+}
+
+// New{{ service_name }}Service creates a new {{ service_name }} service.
+func New{{ service_name }}Service({% for field in fields %}{{ field.name }} {{ field.type }}{% if not loop.last %}, {% endif %}{% endfor %}) {{ service_name }}Service {
+	return &{{ service_name.lower() }}Service{
+{% for field in fields %}
+		{{ field.name }}: {{ field.name }},
+{% endfor %}
+	}
+}
+
+{% for method in methods %}
+// {{ method.name }} {{ method.description }}.
+func (s *{{ service_name.lower() }}Service) {{ method.name }}(ctx context.Context{% for param in method.params %}, {{ param.name }} {{ param.type }}{% endfor %}) ({% for result in method.results %}{{ result.type }}{% if not loop.last %}, {% endif %}{% endfor %}) {
+	// TODO: Implement {{ method.name }}
+{% if method.results|length == 1 %}
+	return {{ method.default_return }}
+{% else %}
+	return {{ method.default_returns|join(', ') }}
+{% endif %}
+}
+
+{% endfor %}
+""",
+            "gokit/endpoint.go.j2": """// Package {{ package_name }} provides endpoints for {{ service_name }} service.
+package {{ package_name }}
+
+import (
+	"context"
+
+	"github.com/go-kit/kit/endpoint"
+{% if imports %}
+{% for import_line in imports %}
+	"{{ import_line }}"
+{% endfor %}
+{% endif %}
+)
+
+// Endpoints collects all of the endpoints that compose the {{ service_name }} service.
+type Endpoints struct {
+{% for method in methods %}
+	{{ method.name }}Endpoint endpoint.Endpoint
+{% endfor %}
+}
+
+// New{{ service_name }}Endpoints returns an Endpoints struct that wraps the provided service.
+func New{{ service_name }}Endpoints(svc {{ service_name }}Service) Endpoints {
+	return Endpoints{
+{% for method in methods %}
+		{{ method.name }}Endpoint: make{{ method.name }}Endpoint(svc),
+{% endfor %}
+	}
+}
+
+{% for method in methods %}
+// {{ method.name }}Request collects the request parameters for the {{ method.name }} method.
+type {{ method.name }}Request struct {
+{% for param in method.params %}
+	{{ param.name|title }} {{ param.type }} `json:"{{ param.name }}"`
+{% endfor %}
+}
+
+// {{ method.name }}Response collects the response parameters for the {{ method.name }} method.
+type {{ method.name }}Response struct {
+{% for result in method.results %}
+	{{ result.name|title }} {{ result.type }} `json:"{{ result.name }}"`
+{% endfor %}
+}
+
+// make{{ method.name }}Endpoint creates an endpoint for the {{ method.name }} method.
+func make{{ method.name }}Endpoint(svc {{ service_name }}Service) endpoint.Endpoint {
+	return func(ctx context.Context, request interface{}) (interface{}, error) {
+		req := request.({{ method.name }}Request)
+		{% if method.results|length == 1 %}result, err{% else %}{% for result in method.results %}{{ result.name }}{% if not loop.last %}, {% endif %}{% endfor %}, err{% endif %} := svc.{{ method.name }}(ctx{% for param in method.params %}, req.{{ param.name|title }}{% endfor %})
+		if err != nil {
+			return {{ method.name }}Response{}, err
+		}
+		return {{ method.name }}Response{
+{% for result in method.results %}
+			{{ result.name|title }}: {{ result.name }},
+{% endfor %}
+		}, nil
+	}
+}
+
+{% endfor %}
+""",
+            "gokit/transport.go.j2": """// Package {{ package_name }} provides HTTP transport for {{ service_name }} service.
+package {{ package_name }}
+
+import (
+	"context"
+	"encoding/json"
+	"net/http"
+
+	"github.com/go-kit/kit/log"
+	"github.com/go-kit/kit/transport/http"
+	"github.com/gorilla/mux"
+{% if imports %}
+{% for import_line in imports %}
+	"{{ import_line }}"
+{% endfor %}
+{% endif %}
+)
+
+// New{{ service_name }}HTTPHandler returns an HTTP handler that makes a set of endpoints
+// available on predefined paths.
+func New{{ service_name }}HTTPHandler(endpoints Endpoints, logger log.Logger) http.Handler {
+	r := mux.NewRouter()
+{% for method in methods %}
+	r.Methods("{{ method.http_method|default('POST') }}").Path("{{ method.path|default('/' + method.name.lower()) }}").Handler(http.NewServer(
+		endpoints.{{ method.name }}Endpoint,
+		decode{{ method.name }}Request,
+		encodeResponse,
+	))
+{% endfor %}
+
+	return r
+}
+
+{% for method in methods %}
+// decode{{ method.name }}Request is a transport/http.DecodeRequestFunc that decodes a
+// JSON-encoded request from the HTTP request body.
+func decode{{ method.name }}Request(_ context.Context, r *http.Request) (interface{}, error) {
+	var request {{ method.name }}Request
+	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+		return nil, err
+	}
+	return request, nil
+}
+
+{% endfor %}
+
+// encodeResponse is a transport/http.EncodeResponseFunc that encodes
+// the response as JSON to the response writer.
+func encodeResponse(_ context.Context, w http.ResponseWriter, response interface{}) error {
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	return json.NewEncoder(w).Encode(response)
+}
+
+// encodeError encodes errors from business-logic.
+func encodeError(_ context.Context, err error, w http.ResponseWriter) {
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	w.WriteHeader(http.StatusInternalServerError)
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"error": err.Error(),
+	})
+}
+""",
+            "go/struct.go.j2": """// Package {{ package_name }} provides {{ struct_description }}.
+package {{ package_name }}
+
+{% if imports %}
+import (
+{% for import_line in imports %}
+	"{{ import_line }}"
+{% endfor %}
+)
+
+{% endif %}
+// {{ struct_name }} represents {{ struct_description }}.
+type {{ struct_name }} struct {
+{% for field in fields %}
+	{{ field.name }} {{ field.type }}{% if field.tag %} `{{ field.tag }}`{% endif %}{% if field.comment %} // {{ field.comment }}{% endif %}
+{% endfor %}
+}
+
+{% if constructor %}
+// New{{ struct_name }} creates a new {{ struct_name }} instance.
+func New{{ struct_name }}({% for field in constructor.params %}{{ field.name }} {{ field.type }}{% if not loop.last %}, {% endif %}{% endfor %}) *{{ struct_name }} {
+	return &{{ struct_name }}{
+{% for field in constructor.params %}
+		{{ field.name|title }}: {{ field.name }},
+{% endfor %}
+	}
+}
+{% endif %}
+
+{% for method in methods %}
+// {{ method.name }} {{ method.description }}.
+func ({{ receiver_name }} *{{ struct_name }}) {{ method.name }}({% for param in method.params %}{{ param.name }} {{ param.type }}{% if not loop.last %}, {% endif %}{% endfor %}){% if method.results %} ({% for result in method.results %}{{ result.type }}{% if not loop.last %}, {% endif %}{% endfor %}){% endif %} {
+	// TODO: Implement {{ method.name }}
+{% if method.default_return %}
+	return {{ method.default_return }}
+{% endif %}
+}
+
+{% endfor %}
+""",
+            "tests/go_test.go.j2": """// Package {{ package_name }} provides tests for {{ module_name }}.
+package {{ package_name }}
+
+import (
+	"testing"
+{% if imports %}
+{% for import_line in imports %}
+	"{{ import_line }}"
+{% endfor %}
+{% endif %}
+)
+
+{% for test in tests %}
+// {{ test.name }} tests {{ test.description }}.
+func {{ test.name }}(t *testing.T) {
+	// Arrange
+	{{ test.arrange | indent(4) }}
+
+	// Act
+	{{ test.act | indent(4) }}
+
+	// Assert
+	{{ test.assert | indent(4) }}
+}
+
+{% endfor %}
+
+{% if benchmark_tests %}
+{% for benchmark in benchmark_tests %}
+// {{ benchmark.name }} benchmarks {{ benchmark.description }}.
+func {{ benchmark.name }}(b *testing.B) {
+	// Setup
+	{{ benchmark.setup | indent(4) }}
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		{{ benchmark.operation | indent(8) }}
+	}
+}
 
 {% endfor %}
 {% endif %}

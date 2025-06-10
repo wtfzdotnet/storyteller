@@ -1,6 +1,14 @@
 {
   "repositories": [
     {
+      "name": "recipe-backend-go",
+      "url": "https://github.com/recipeauthority/recipe-backend-go",
+      "language": "go",
+      "platforms": ["gokit", "grpc", "docker"],
+      "ruleset": "go-gokit",
+      "description": "Go backend with Go kit microservices architecture"
+    },
+    {
       "name": "recipe-backend",
       "url": "https://github.com/recipeauthority/recipe-backend",
       "language": "python",
@@ -66,6 +74,62 @@
           "parameters": {
             "complexity_threshold": 10,
             "suggest_type_hints": true
+          }
+        }
+      ]
+    },
+    "go-gokit": {
+      "name": "Go with Go Kit",
+      "description": "Go microservices development with Go kit framework",
+      "language": "go",
+      "platforms": ["gokit", "grpc", "docker"],
+      "actions": [
+        {
+          "name": "service_generation",
+          "description": "Generate Go kit service interfaces and implementations",
+          "enabled": true,
+          "parameters": {
+            "framework": "gokit",
+            "include_middleware": true,
+            "include_metrics": true,
+            "include_logging": true
+          }
+        },
+        {
+          "name": "endpoint_generation",
+          "description": "Generate Go kit endpoints for service methods",
+          "enabled": true,
+          "parameters": {
+            "transport": "http",
+            "include_validation": true
+          }
+        },
+        {
+          "name": "transport_generation", 
+          "description": "Generate HTTP transport layer for endpoints",
+          "enabled": true,
+          "parameters": {
+            "router": "gorilla/mux",
+            "middleware": ["logging", "cors", "recovery"]
+          }
+        },
+        {
+          "name": "test_generation",
+          "description": "Generate Go tests with testify framework",
+          "enabled": true,
+          "parameters": {
+            "framework": "testify",
+            "include_benchmarks": true,
+            "mock_external_deps": true
+          }
+        },
+        {
+          "name": "docker_generation",
+          "description": "Generate Dockerfile and docker-compose configurations",
+          "enabled": true,
+          "parameters": {
+            "base_image": "alpine",
+            "include_health_check": true
           }
         }
       ]

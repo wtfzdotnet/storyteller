@@ -1155,6 +1155,11 @@ class MCPStoryServer:
                     component_name, props, template_type
                 )
                 file_extension = ".py"
+            elif component_type == "go":
+                component_content = self._generate_go_component(
+                    component_name, props, template_type
+                )
+                file_extension = ".go"
             else:
                 return {
                     "success": False,
@@ -2982,426 +2987,230 @@ describe('{file_path.stem}', () => {{
 
         return self.template_manager.render_template("python/class.py.j2", context)
 
-    def _generate_react_template_content(self, template_type, props):
-        """Generate React template content based on type."""
+    def _generate_go_component(self, component_name, props, template_type):
+        """Generate Go component code using templates."""
 
-        if template_type == "form":
-            return """
-        <input
-          type="text"
-          name="example"
-          placeholder="Enter value"
-          onChange={handleChange}
-        />"""
-        elif template_type == "list":
-            return ""
-        else:
-            return f"""
-      <p>This is the {template_type} component.</p>
-      {chr(10).join(f"      <p>{prop}: {{{prop}}}</p>" for prop in props) if props else ""}"""
+        if template_type == "service":
+            # Generate Go kit service
+            methods = []
+            fields = []
 
-    def _generate_vue_template_content(self, template_type, props):
-        """Generate Vue template content based on type."""
-
-        if template_type == "form":
-            return """
-    <form @submit.prevent="handleSubmit">
-      <input v-model="formData.example" placeholder="Enter value" />
-      <button type="submit">Submit</button>
-    </form>"""
-        elif template_type == "list":
-            return """
-    <ul>
-      <li v-for="(item, index) in items" :key="index">{{ item }}</li>
-    </ul>"""
-        else:
-            return f"""
-    <p>This is the {template_type} component.</p>
-    {chr(10).join(f"    <p>{prop}: {{{{ {prop} }}}}</p>" for prop in props) if props else ""}"""
-
-    def _generate_supporting_files(
-        self, component_name, component_type, template_type, props=None
-    ):
-        """Generate supporting files for the component."""
-        if props is None:
-            props = []
-
-        supporting_files = {}
-
-        if component_type == "react":
-            # Generate test file using template
-            test_context = {
-                "module_name": component_name,
-                "component_name": component_name,
-                "framework": "jest",
-                "imports": [f"import {component_name} from './{component_name}';"],
-                "test_cases": [
+            # Add default CRUD methods for services
+            methods.extend(
+                [
                     {
-                        "description": "renders component",
-                        "code": f"render(<{component_name} />);\n    expect(screen.getByText('{component_name}')).toBeInTheDocument();",
-                    }
-                ],
-            }
-
-            supporting_files[f"{component_name}.test.jsx"] = (
-                self.template_manager.render_template(
-                    "tests/js_test.ts.j2", test_context
-                )
-            )
-
-            # Generate story file using template
-            story_context = {
-                "component_name": component_name,
-                "component_file": component_name,
-                "story_title": f"Components/{component_name}",
-                "arg_types": [
-                    {"name": prop.get("name", ""), "control": "text"} for prop in props
-                ],
-                "default_args": {
-                    prop.get("name", ""): (
-                        "''" if prop.get("type", "string") == "string" else "false"
-                    )
-                    for prop in props
-                },
-                "additional_stories": [
-                    {
-                        "name": "Interactive",
-                        "args": {
-                            prop.get("name", ""): (
-                                "'Interactive'"
-                                if prop.get("type", "string") == "string"
-                                else "true"
-                            )
-                            for prop in props
-                        },
-                    }
-                ],
-            }
-
-            supporting_files[f"{component_name}.stories.jsx"] = (
-                self.template_manager.render_template(
-                    "storybook/react_story.stories.tsx.j2", story_context
-                )
-            )
-
-        elif component_type == "python":
-            # Generate test file using template
-            test_context = {
-                "module_name": component_name.lower(),
-                "class_name": component_name,
-                "imports": [f"from {component_name.lower()} import {component_name}"],
-                "test_methods": [
-                    {
-                        "name": "initialization",
-                        "description": f"{component_name} initialization",
-                        "arrange": f"component = {component_name}()",
-                        "act": "# Component created",
-                        "assert": "assert component is not None",
+                        "name": f"Create{component_name}",
+                        "description": f"creates a new {component_name}",
+                        "params": [
+                            {
+                                "name": "request",
+                                "type": f"Create{component_name}Request",
+                            }
+                        ],
+                        "results": [
+                            {"type": f"*{component_name}", "name": "result"},
+                            {"type": "error", "name": "err"},
+                        ],
+                        "default_returns": ["nil", "nil"],
                     },
                     {
-                        "name": "process",
-                        "description": f"{component_name} process method",
-                        "arrange": f"component = {component_name}()",
-                        "act": "result = component.process()",
-                        "assert": "assert result is not None or result is None  # Update as needed",
-                    },
-                ],
-            }
-
-            supporting_files[f"test_{component_name.lower()}.py"] = (
-                self.template_manager.render_template(
-                    "tests/python_test.py.j2", test_context
-                )
-            )
-
-        return supporting_files
-
-    def _generate_arg_types(self, props: List[Dict[str, Any]]) -> str:
-        """Generate Storybook argTypes configuration."""
-        if not props:
-            return ""
-
-        arg_types = []
-        for prop in props:
-            prop_name = prop.get("name", "")
-            prop_type = prop.get("type", "string")
-
-            control = "text"
-            if prop_type in ["boolean", "bool"]:
-                control = "boolean"
-            elif prop_type in ["number", "int", "float"]:
-                control = "number"
-            elif prop_type in ["array", "list"]:
-                control = "object"
-
-            arg_types.append(f'    {prop_name}: {{ control: "{control}" }}')
-
-        return ",\n".join(arg_types)
-
-    def _generate_default_args(self, props: List[Dict[str, Any]]) -> str:
-        """Generate default args for Storybook stories."""
-        if not props:
-            return ""
-
-        args = []
-        for prop in props:
-            prop_name = prop.get("name", "")
-            prop_type = prop.get("type", "string")
-
-            default_value = "''"
-            if prop_type in ["boolean", "bool"]:
-                default_value = "false"
-            elif prop_type in ["number", "int"]:
-                default_value = "0"
-            elif prop_type in ["float"]:
-                default_value = "0.0"
-            elif prop_type in ["array", "list"]:
-                default_value = "[]"
-            elif prop_type in ["object"]:
-                default_value = "{}"
-
-            args.append(f"    {prop_name}: {default_value}")
-
-        return ",\n".join(args)
-
-    def _generate_interactive_args(self, props: List[Dict[str, Any]]) -> str:
-        """Generate interactive args for Storybook stories."""
-        if not props:
-            return ""
-
-        args = []
-        for prop in props:
-            prop_name = prop.get("name", "")
-            prop_type = prop.get("type", "string")
-
-            interactive_value = "'Interactive'"
-            if prop_type in ["boolean", "bool"]:
-                interactive_value = "true"
-            elif prop_type in ["number", "int"]:
-                interactive_value = "42"
-            elif prop_type in ["float"]:
-                interactive_value = "3.14"
-            elif prop_type in ["array", "list"]:
-                interactive_value = "['item1', 'item2']"
-            elif prop_type in ["object"]:
-                interactive_value = "{ key: 'value' }"
-
-            args.append(f"    {prop_name}: {interactive_value}")
-
-        return ",\n".join(args)
-
-    def _scan_storybook_files(self, project_path, scan_type):
-        """Scan for Storybook files and configuration."""
-        import re
-        from pathlib import Path
-
-        storybook_data = {
-            "config_files": [],
-            "story_files": [],
-            "components_with_stories": [],
-            "components_without_stories": [],
-            "coverage": {
-                "percentage": 0,
-                "total_components": 0,
-                "components_with_stories": 0,
-            },
-        }
-
-        try:
-            # Find Storybook configuration files
-            config_patterns = [".storybook/**/*", "storybook.config.*", ".storybook.js"]
-            for pattern in config_patterns:
-                config_files = list(project_path.rglob(pattern))
-                storybook_data["config_files"].extend([str(f) for f in config_files])
-
-            # Find story files
-            story_patterns = [
-                "*.stories.js",
-                "*.stories.tsx",
-                "*.stories.ts",
-                "*.story.js",
-            ]
-            story_files = []
-            for pattern in story_patterns:
-                story_files.extend(list(project_path.rglob(pattern)))
-
-            storybook_data["story_files"] = [str(f) for f in story_files]
-
-            # Find components
-            component_patterns = ["*.jsx", "*.tsx", "*.vue"]
-            components = []
-            for pattern in component_patterns:
-                components.extend(list(project_path.rglob(pattern)))
-
-            # Filter out story files and test files from components
-            component_files = [
-                f
-                for f in components
-                if not any(
-                    story_pattern.replace("*", "").replace(".", "") in f.name
-                    for story_pattern in story_patterns
-                )
-                and "test" not in f.name.lower()
-                and "__tests__" not in str(f)
-            ]
-
-            # Check which components have stories
-            components_with_stories = []
-            components_without_stories = []
-
-            for component in component_files:
-                component_name = component.stem
-                has_story = any(
-                    component_name in story_file
-                    for story_file in storybook_data["story_files"]
-                )
-
-                if has_story:
-                    components_with_stories.append(str(component))
-                else:
-                    components_without_stories.append(str(component))
-
-            storybook_data["components_with_stories"] = components_with_stories
-            storybook_data["components_without_stories"] = components_without_stories
-
-            # Calculate coverage
-            total_components = len(component_files)
-            components_with_stories_count = len(components_with_stories)
-            coverage_percentage = (
-                components_with_stories_count / max(total_components, 1)
-            ) * 100
-
-            storybook_data["coverage"] = {
-                "percentage": round(coverage_percentage, 1),
-                "total_components": total_components,
-                "components_with_stories": components_with_stories_count,
-                "components_without_stories": len(components_without_stories),
-            }
-
-        except Exception as e:
-            logger.error(f"Error scanning Storybook files: {e}")
-
-        return storybook_data
-
-    def _generate_storybook_suggestions(self, component_path, suggestion_type):
-        """Generate Storybook suggestions for a component."""
-        from pathlib import Path
-
-        suggestions = {
-            "component_path": str(component_path),
-            "suggestions": [],
-            "story_templates": [],
-            "best_practices": [],
-        }
-
-        try:
-            component_name = component_path.stem
-
-            # Read component file for analysis
-            with open(component_path, "r", encoding="utf-8") as f:
-                content = f.read()
-
-            # Generate story file path
-            story_file_path = component_path.parent / f"{component_name}.stories.tsx"
-
-            if suggestion_type == "stories":
-                # Story suggestions
-                suggestions["suggestions"] = [
-                    {
-                        "type": "story_creation",
-                        "title": "Create main story file",
-                        "description": f"Create {story_file_path.name} with basic story configurations",
-                        "priority": "high",
+                        "name": f"Get{component_name}",
+                        "description": f"retrieves a {component_name} by ID",
+                        "params": [{"name": "id", "type": "string"}],
+                        "results": [
+                            {"type": f"*{component_name}", "name": "result"},
+                            {"type": "error", "name": "err"},
+                        ],
+                        "default_returns": ["nil", "nil"],
                     },
                     {
-                        "type": "story_variants",
-                        "title": "Add story variants",
-                        "description": "Create stories for different component states (default, loading, error)",
-                        "priority": "medium",
+                        "name": f"Update{component_name}",
+                        "description": f"updates an existing {component_name}",
+                        "params": [
+                            {"name": "id", "type": "string"},
+                            {
+                                "name": "request",
+                                "type": f"Update{component_name}Request",
+                            },
+                        ],
+                        "results": [
+                            {"type": f"*{component_name}", "name": "result"},
+                            {"type": "error", "name": "err"},
+                        ],
+                        "default_returns": ["nil", "nil"],
                     },
                     {
-                        "type": "interactive_stories",
-                        "title": "Add interactive controls",
-                        "description": "Configure argTypes for interactive component testing",
-                        "priority": "medium",
+                        "name": f"Delete{component_name}",
+                        "description": f"deletes a {component_name} by ID",
+                        "params": [{"name": "id", "type": "string"}],
+                        "results": [{"type": "error", "name": "err"}],
+                        "default_return": "nil",
                     },
                 ]
+            )
 
-                # Generate story templates
-                if "props" in content or "interface" in content:
-                    # Component has props - create interactive story
-                    story_template = self.template_manager.render_template(
-                        "storybook/react_story.stories.tsx.j2",
-                        {
-                            "component_name": component_name,
-                            "component_file": component_name,
-                            "story_title": f"Components/{component_name}",
-                            "arg_types": [],
-                            "default_args": {},
-                            "additional_stories": [],
-                        },
-                    )
+            # Add repository dependency
+            fields.append({"name": "repo", "type": f"{component_name}Repository"})
 
-                    suggestions["story_templates"].append(
+            context = {
+                "package_name": component_name.lower(),
+                "service_name": component_name,
+                "service_description": f"{component_name} service interface",
+                "imports": ["fmt", "context"],
+                "methods": methods,
+                "fields": fields,
+            }
+
+            return self.template_manager.render_template("go/service.go.j2", context)
+
+        elif template_type == "struct":
+            # Generate Go struct
+            fields = []
+
+            # Add fields from props
+            if props:
+                for prop in props:
+                    prop_name = prop.get("name", "field")
+                    prop_type = prop.get("type", "string")
+                    tag = prop.get("tag", f'json:"{prop_name.lower()}"')
+
+                    fields.append(
                         {
-                            "file_name": f"{component_name}.stories.tsx",
-                            "content": story_template,
-                            "type": "interactive",
+                            "name": prop_name.title(),
+                            "type": prop_type,
+                            "tag": tag,
+                            "comment": prop.get("description", ""),
                         }
                     )
+            else:
+                # Default fields
+                fields.extend(
+                    [
+                        {
+                            "name": "ID",
+                            "type": "string",
+                            "tag": 'json:"id"',
+                            "comment": "Unique identifier",
+                        },
+                        {
+                            "name": "Name",
+                            "type": "string",
+                            "tag": 'json:"name"',
+                            "comment": "Name of the entity",
+                        },
+                        {
+                            "name": "CreatedAt",
+                            "type": "time.Time",
+                            "tag": 'json:"created_at"',
+                            "comment": "Creation timestamp",
+                        },
+                    ]
+                )
 
-            elif suggestion_type == "docs":
-                # Documentation suggestions
-                suggestions["suggestions"] = [
-                    {
-                        "type": "component_docs",
-                        "title": "Add component documentation",
-                        "description": "Document component purpose, props, and usage examples",
-                        "priority": "high",
-                    },
-                    {
-                        "type": "addon_docs",
-                        "title": "Configure Docs addon",
-                        "description": "Set up automatic documentation generation with @storybook/addon-docs",
-                        "priority": "medium",
-                    },
+            # Add constructor
+            constructor = {
+                "params": [
+                    {"name": field["name"].lower(), "type": field["type"]}
+                    for field in fields
+                    if field["name"] != "CreatedAt"
                 ]
+            }
 
-            elif suggestion_type == "addon":
-                # Addon suggestions
-                suggestions["suggestions"] = [
-                    {
-                        "type": "controls_addon",
-                        "title": "Add Controls addon",
-                        "description": "Enable dynamic prop editing with @storybook/addon-controls",
-                        "priority": "high",
-                    },
-                    {
-                        "type": "actions_addon",
-                        "title": "Add Actions addon",
-                        "description": "Log component actions and events with @storybook/addon-actions",
-                        "priority": "medium",
-                    },
-                    {
-                        "type": "accessibility_addon",
-                        "title": "Add A11y addon",
-                        "description": "Test accessibility with @storybook/addon-a11y",
-                        "priority": "medium",
-                    },
-                ]
-
-            # Best practices suggestions
-            suggestions["best_practices"] = [
-                "Use descriptive story names that explain the component state",
-                "Group related stories under the same component hierarchy",
-                "Document component props with JSDoc comments",
-                "Include edge cases and error states in stories",
-                "Use argTypes to make stories interactive",
-                "Add accessibility testing with addon-a11y",
-                "Create visual regression tests with Chromatic",
+            # Add methods
+            methods = [
+                {
+                    "name": "Validate",
+                    "description": f"validates the {component_name} struct",
+                    "params": [],
+                    "results": [{"type": "error"}],
+                    "default_return": "nil",
+                }
             ]
 
-        except Exception as e:
-            logger.error(f"Error generating Storybook suggestions: {e}")
+            context = {
+                "package_name": component_name.lower(),
+                "struct_name": component_name,
+                "struct_description": f"represents a {component_name} entity",
+                "imports": (
+                    ["time"] if any(f["type"] == "time.Time" for f in fields) else []
+                ),
+                "fields": fields,
+                "constructor": constructor,
+                "methods": methods,
+                "receiver_name": component_name[0].lower(),
+            }
 
-        return suggestions
+            return self.template_manager.render_template("go/struct.go.j2", context)
+
+        elif template_type == "endpoint":
+            # Generate Go kit endpoint
+            methods = []
+
+            # Add methods based on props or defaults
+            if props:
+                for prop in props:
+                    method_name = prop.get("name", "Process")
+                    methods.append(
+                        {
+                            "name": method_name,
+                            "params": [
+                                {"name": "request", "type": f"{method_name}Request"}
+                            ],
+                            "results": [
+                                {"name": "response", "type": f"{method_name}Response"}
+                            ],
+                        }
+                    )
+            else:
+                methods.append(
+                    {
+                        "name": "Process",
+                        "params": [{"name": "request", "type": "ProcessRequest"}],
+                        "results": [{"name": "response", "type": "ProcessResponse"}],
+                    }
+                )
+
+            context = {
+                "package_name": component_name.lower(),
+                "service_name": component_name,
+                "imports": [],
+                "methods": methods,
+            }
+
+            return self.template_manager.render_template(
+                "gokit/endpoint.go.j2", context
+            )
+
+        elif template_type == "transport":
+            # Generate Go kit HTTP transport
+            methods = []
+
+            # Add HTTP methods
+            if props:
+                for prop in props:
+                    method_name = prop.get("name", "Process")
+                    http_method = prop.get("http_method", "POST")
+                    path = prop.get("path", f"/{method_name.lower()}")
+
+                    methods.append(
+                        {"name": method_name, "http_method": http_method, "path": path}
+                    )
+            else:
+                methods.append(
+                    {"name": "Process", "http_method": "POST", "path": "/process"}
+                )
+
+            context = {
+                "package_name": component_name.lower(),
+                "service_name": component_name,
+                "imports": [],
+                "methods": methods,
+            }
+
+            return self.template_manager.render_template(
+                "gokit/transport.go.j2", context
+            )
+
+        else:
+            # Default to struct generation
+            return self._generate_go_component(component_name, props, "struct")

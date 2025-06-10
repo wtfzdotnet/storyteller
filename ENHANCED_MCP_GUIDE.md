@@ -541,3 +541,242 @@ logging.basicConfig(level=logging.DEBUG)
 5. Document usage examples
 
 For more information, see the [GitHub repository](https://github.com/recipeauthority/storyteller) and join our community discussions.
+
+## Go + Go Kit Backend Support
+
+The enhanced MCP system now includes comprehensive support for Go backends using the Go kit microservice framework.
+
+### Go Kit Templates
+
+#### 1. Go Service Template (`go/service.go.j2`)
+
+Generates Go kit service interfaces and implementations:
+
+```go
+// Context variables:
+{
+    "package_name": "user",
+    "service_name": "UserService",
+    "service_description": "User management service",
+    "imports": ["context", "fmt"],
+    "methods": [
+        {
+            "name": "CreateUser",
+            "description": "creates a new user",
+            "params": [{"name": "request", "type": "CreateUserRequest"}],
+            "results": [{"type": "*User", "name": "user"}, {"type": "error", "name": "err"}],
+            "default_returns": ["nil", "nil"]
+        }
+    ],
+    "fields": [{"name": "repo", "type": "UserRepository"}]
+}
+```
+
+#### 2. Go Struct Template (`go/struct.go.j2`)
+
+Generates Go structs with JSON tags and methods:
+
+```go
+// Context variables:
+{
+    "package_name": "models",
+    "struct_name": "Recipe",
+    "struct_description": "represents a recipe entity",
+    "fields": [
+        {
+            "name": "ID",
+            "type": "string", 
+            "tag": "json:\"id\" db:\"id\"",
+            "comment": "Unique identifier"
+        }
+    ]
+}
+```
+
+#### 3. Go Kit Endpoint Template (`gokit/endpoint.go.j2`)
+
+Generates Go kit endpoints for HTTP transport:
+
+```go
+// Context variables:
+{
+    "package_name": "endpoints",
+    "service_name": "RecipeService",
+    "methods": [
+        {
+            "name": "CreateRecipe",
+            "params": [{"name": "Title", "type": "string"}],
+            "results": [{"name": "Recipe", "type": "*Recipe"}]
+        }
+    ]
+}
+```
+
+#### 4. Go Kit Transport Template (`gokit/transport.go.j2`)
+
+Generates HTTP transport layer with Gorilla Mux:
+
+```go
+// Context variables:
+{
+    "package_name": "transport",
+    "service_name": "OrderService",
+    "methods": [
+        {
+            "name": "CreateOrder",
+            "http_method": "POST",
+            "path": "/orders"
+        }
+    ]
+}
+```
+
+#### 5. Go Test Template (`tests/go_test.go.j2`)
+
+Generates Go tests with testify framework:
+
+```go
+// Context variables:
+{
+    "package_name": "recipe_test",
+    "tests": [
+        {
+            "name": "TestCreateRecipe",
+            "description": "creating a new recipe",
+            "arrange": "service := NewRecipeService(mockRepo)",
+            "act": "result, err := service.CreateRecipe(ctx, request)",
+            "assert": "assert.NoError(t, err)"
+        }
+    ]
+}
+```
+
+### Go Kit Ruleset
+
+The `go-gokit` ruleset provides comprehensive Go kit development support:
+
+```json
+{
+  "name": "Go with Go Kit",
+  "language": "go",
+  "platforms": ["gokit", "grpc", "docker"],
+  "actions": [
+    {
+      "name": "service_generation",
+      "description": "Generate Go kit service interfaces and implementations",
+      "parameters": {
+        "framework": "gokit",
+        "include_middleware": true,
+        "include_metrics": true
+      }
+    },
+    {
+      "name": "endpoint_generation",
+      "description": "Generate Go kit endpoints for service methods",
+      "parameters": {
+        "transport": "http",
+        "include_validation": true
+      }
+    },
+    {
+      "name": "transport_generation",
+      "description": "Generate HTTP transport layer",
+      "parameters": {
+        "router": "gorilla/mux",
+        "middleware": ["logging", "cors", "recovery"]
+      }
+    },
+    {
+      "name": "test_generation",
+      "description": "Generate Go tests with testify",
+      "parameters": {
+        "framework": "testify",
+        "include_benchmarks": true,
+        "mock_external_deps": true
+      }
+    },
+    {
+      "name": "docker_generation",
+      "description": "Generate Dockerfile and docker-compose",
+      "parameters": {
+        "base_image": "alpine",
+        "include_health_check": true
+      }
+    }
+  ]
+}
+```
+
+### Go Repository Configuration
+
+Configure your Go backend repository:
+
+```json
+{
+  "name": "recipe-backend-go",
+  "url": "https://github.com/recipeauthority/recipe-backend-go",
+  "language": "go",
+  "platforms": ["gokit", "grpc", "docker"],
+  "ruleset": "go-gokit",
+  "description": "Go backend with Go kit microservices architecture"
+}
+```
+
+### MCP Server Go Support
+
+Generate Go components using the MCP server:
+
+```json
+{
+  "method": "component/generate",
+  "params": {
+    "component_name": "UserService",
+    "component_type": "go",
+    "template_type": "service",
+    "props": [
+      {
+        "name": "CreateUser",
+        "type": "method",
+        "params": [{"name": "request", "type": "CreateUserRequest"}],
+        "description": "Creates a new user account"
+      }
+    ]
+  }
+}
+```
+
+### Go Kit Platform Support
+
+The system supports various Go platforms:
+
+- **gokit**: Go kit microservice framework
+- **grpc**: gRPC protocol buffer support
+- **gin**: Gin web framework  
+- **echo**: Echo web framework
+- **fiber**: Fiber web framework
+- **docker**: Docker containerization
+- **kubernetes**: Kubernetes deployment
+- **testify**: Testing framework
+- **gorm**: ORM library
+
+### Complete Microservice Generation
+
+Generate a complete Go kit microservice:
+
+1. **Service Interface**: Business logic interface
+2. **Endpoints**: HTTP endpoint handlers
+3. **Transport**: HTTP transport layer with routing
+4. **Models**: Go structs with JSON/DB tags
+5. **Tests**: Unit tests with testify and benchmarks
+6. **Docker**: Containerization configuration
+
+### Go Kit Best Practices
+
+The templates follow Go kit best practices:
+
+- **Separation of Concerns**: Clear separation between service, endpoint, and transport layers
+- **Middleware Support**: Built-in logging, metrics, and recovery middleware
+- **Error Handling**: Proper error handling and propagation
+- **Testing**: Comprehensive test generation with mocking
+- **Documentation**: Generated comments and documentation
+- **Type Safety**: Strong typing with interfaces and structs

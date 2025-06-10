@@ -870,7 +870,7 @@ Focus on technical implementation details and provide clear guidance for the dev
         target_repositories: Optional[List[str]] = None,
     ) -> Dict[str, Optional[UserStory]]:
         """
-        Creates user stories across multiple repositories with dependency awareness.
+        Creates user stories across multiple repositories using the simplified approach.
 
         Args:
             initial_prompt: The user's request for the story
@@ -884,7 +884,7 @@ Focus on technical implementation details and provide clear guidance for the dev
             logger.warning(
                 "Multi-repository mode not enabled, falling back to single repository"
             )
-            single_story = await self.create_new_story(initial_prompt, roles_to_consult)
+            single_story = await self.create_complete_story(initial_prompt, roles_to_consult)
             return {"default": single_story}
 
         # Determine target repositories
@@ -906,34 +906,34 @@ Focus on technical implementation details and provide clear guidance for the dev
                 results[repo_key] = None
                 continue
 
-            # Customize prompt based on repository type and dependencies
-            repo_specific_prompt = self._customize_prompt_for_repository(
-                initial_prompt, repo_key, repo_config, results
-            )
-
             try:
-                story = await self.create_new_story(
-                    repo_specific_prompt,
+                logger.info(f"Creating story for repository: {repo_config.name}")
+                
+                # Create story using simplified approach
+                story = await self.create_complete_story(
+                    initial_prompt,
                     roles_to_consult,
-                    target_repository_key=repo_key,
+                    f"{repo_config.description} ({repo_config.type})",
+                    repo_key
                 )
                 results[repo_key] = story
 
                 if story:
                     logger.info(
-                        f"Created story #{story.id} in repository {repo_config.name}"
+                        f"Successfully created story #{story.id} for repository {repo_config.name}"
                     )
-                    # Add cross-repository references
-                    await self._add_cross_repository_references(
-                        story, repo_key, results
-                    )
+                    
+                    # Add cross-repository references if there are dependencies
+                    await self._add_cross_repository_references(story, repo_key, results)
                 else:
                     logger.error(
-                        f"Failed to create story in repository {repo_config.name}"
+                        f"Failed to create story for repository {repo_config.name}"
                     )
 
             except Exception as e:
-                logger.error(f"Error creating story in repository {repo_key}: {e}")
+                logger.error(
+                    f"Error creating story for repository {repo_key}: {e}"
+                )
                 results[repo_key] = None
 
         return results

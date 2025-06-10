@@ -1,108 +1,112 @@
-# Story Management Workflow - User Guide
+# Simplified Story Management System - User Guide
 
-This guide explains how to submit user stories and interact with the AI-powered story management system for the Recipe Authority Platform.
+This guide explains how to create user stories using the simplified AI-powered story management system.
 
 ## Overview
 
-The story management system provides intelligent assistance for creating, refining, and tracking user stories. It leverages our expert AI team to provide contextual feedback specific to the recipe management domain.
+The simplified story management system provides intelligent assistance for creating complete, actionable user stories. It leverages AI to gather perspectives from multiple roles locally before creating ready-to-implement stories on GitHub.
 
-## Submission Methods
+## Key Features
 
-### Method 1: GitHub Issues (Recommended)
+- **Local AI Processing**: Stories are refined locally by considering multiple role perspectives before creating GitHub issues
+- **No Iteration Overhead**: Complete stories are created immediately without GitHub-based iteration cycles
+- **Multi-Repository Support**: Stories can be created across multiple repositories with repository-specific context
+- **Ready for Development**: All created stories are immediately actionable
 
-The primary way to submit and manage user stories is through GitHub Issues with automated AI assistance.
+## Quick Start
 
-#### Creating a New Story
+### Command Line Interface
 
-1. **Navigate to Issues**: Go to the GitHub repository and click "Issues"
-2. **Create New Issue**: Click "New issue"
-3. **Write Your Story**: Describe your user story or feature request
-4. **Add Labels**: The system will automatically suggest and apply relevant labels
-5. **Submit**: Click "Submit new issue"
-
-#### Story Labels
-
-The system uses labels to categorize and route stories:
-
-- **`story`**: Marks the issue as a user story
-- **`needs-analysis`**: Requires deeper analysis from the AI team
-- **`in-review`**: Currently being reviewed by AI experts
-- **`feedback-provided`**: AI feedback has been added
-- **`ready-for-development`**: Story is ready for implementation
-- **`blocked`**: Story is blocked and needs attention
-
-Domain-specific labels:
-- **`recipe-domain`**: Recipe-related functionality
-- **`nutrition-domain`**: Nutrition and dietary features
-- **`inventory-domain`**: Inventory management features
-- **`meal-planning-domain`**: Meal planning functionality
-- **`shopping-domain`**: Shopping and grocery features
-- **`cultural-domain`**: Cultural recipe features
-
-#### Automated Workflow
-
-When you submit or update a story, the system automatically:
-
-1. **Analyzes the content** using our AI expert team
-2. **Applies relevant labels** based on domain and complexity
-3. **Generates expert feedback** from relevant specialists
-4. **Updates the story** with recommendations and technical insights
-5. **Tracks progress** through the development lifecycle
-
-#### Getting AI Feedback
-
-The AI team will automatically provide feedback, but you can also:
-
-- **Add comments** asking specific questions
-- **Use @mentions** to request specific expert input (e.g., "Could the @nutrition-expert review this?")
-- **Update the story** description to trigger re-analysis
-
-### Method 2: CLI Interface (Advanced Users)
-
-For developers and advanced users, there's a command-line interface available.
-
-#### Setup
-
+#### Create a Single Story
 ```bash
-# Navigate to the AI directory
-cd ai/
-
-# Install dependencies
-pip install -r requirements.txt
-
-# Authenticate (requires GitHub token)
-export GITHUB_TOKEN="your_github_token"
+python main.py story create "As a user, I want to track my recipes so I can organize my cooking"
 ```
 
-#### Creating Stories via CLI
-
+#### Create Stories Across Multiple Repositories
 ```bash
-# Create a new story
-python -m ai_core.main create-story \
-  --title "Recipe import from popular cooking websites" \
-  --description "As a user, I want to import recipes from cooking websites so that I can easily add them to my cookbook" \
-  --labels "story,recipe-domain"
-
-# Get feedback on existing story
-python -m ai_core.main analyze-story \
-  --issue-number 123 \
-  --roles "domain-expert,system-architect"
-
-# Update story status
-python -m ai_core.main update-story \
-  --issue-number 123 \
-  --status "ready-for-development"
+python main.py story create-multi "User authentication system" --repos backend,frontend
 ```
 
-#### CLI Commands
+#### Create Refactor Tickets
+```bash
+python main.py story refactor "Extract authentication logic into a service" --type extract
+```
 
-- **`create-story`**: Create a new user story
-- **`analyze-story`**: Get AI analysis and feedback
-- **`update-story`**: Update story status or content
-- **`list-stories`**: List all stories with filters
-- **`get-feedback`**: Retrieve AI feedback for a story
+### Story Labels
 
-## Story Writing Best Practices
+The simplified system uses essential labels for organization:
+
+- **`story`**: Basic story marker
+- **`ready-for-development`**: Ready for implementation
+- **`in-development`**: Currently being worked on
+- **`completed`**: Finished
+- **`blocked`**: Blocked and needs attention
+
+Repository-specific labels (for multi-repo mode):
+- **`backend`**: Backend-related stories
+- **`frontend`**: Frontend-related stories
+- **`api`**: API-focused stories
+- **`ui`**: User interface stories
+
+## Simplified Workflow
+
+1. **Create Story**: Use CLI or GitHub Issues to submit your initial idea
+2. **AI Processing**: System locally processes the story considering multiple role perspectives
+3. **Ready Story Created**: Complete, actionable story is created on GitHub
+4. **Development**: Story is immediately ready for development work
+
+## Advanced Usage
+
+### Multi-Repository Mode
+
+Configure `.storyteller/config.json` to enable multi-repository story creation:
+
+```json
+{
+  "repositories": {
+    "backend": {
+      "name": "myorg/backend-api",
+      "type": "backend",
+      "description": "Backend API and services"
+    },
+    "frontend": {
+      "name": "myorg/frontend-app", 
+      "type": "frontend",
+      "description": "User interface"
+    }
+  }
+}
+```
+
+### Environment Setup
+
+```bash
+# Create .env file
+cp .env.example .env
+
+# Edit .env with your settings
+GITHUB_TOKEN="your_github_token"
+GITHUB_REPOSITORY="your/repository"
+DEFAULT_LLM_PROVIDER="openai"  # or "github", "ollama"
+```
+
+### Command Examples
+
+```bash
+# Basic story creation
+python main.py story create "User profile management system"
+
+# With specific roles
+python main.py story create "Payment processing" --roles "Product Owner,Security Engineer"
+
+# Multi-repository story
+python main.py story create-multi "User authentication" --repos backend,frontend
+
+# Refactor ticket
+python main.py story refactor "Extract user service" --type extract --files "user/*.py"
+```
+
+## Best Practices
 
 ### User Story Format
 
@@ -138,203 +142,15 @@ Provide context about the recipe domain:
 - **Nutritional requirements** (calorie tracking, macros)
 - **User personas** (home cook, professional chef, nutritionist)
 
-## AI Expert Team Feedback
 
-### What to Expect
+## Configuration
 
-The AI expert team provides feedback from relevant specialists:
+See [SETUP.md](SETUP.md) for detailed setup instructions.
 
-#### Technical Feedback
-- **System Architect**: Technical feasibility and architecture considerations
-- **Lead Developer**: Implementation complexity and Symfony-specific guidance
-- **Security Expert**: Security implications and data privacy concerns
+## Multi-Repository Examples
 
-#### Domain Feedback  
-- **Domain Expert (Food & Nutrition)**: Culinary science and nutrition accuracy
-- **Food Historian**: Cultural authenticity and historical context
-- **Professional Chef**: Practical cooking workflow considerations
-
-#### Product Feedback
-- **Product Owner**: User value, prioritization, and business impact
-- **UX/UI Designer**: User experience and interface design implications
-- **QA Engineer**: Testing considerations and quality assurance
-
-### Interpreting Feedback
-
-AI feedback includes:
-
-1. **Feasibility Assessment**: Technical and domain feasibility
-2. **Implementation Guidance**: Specific technical recommendations
-3. **Risk Analysis**: Potential challenges and mitigation strategies
-4. **Enhancement Suggestions**: Ways to improve the story
-5. **Related Considerations**: Cross-domain impacts and dependencies
-
-### Example Feedback
-
-```markdown
-## AI Expert Team Feedback
-
-**System Architect:**
-This story involves the Recipe Domain and Nutrition Domain. Consider implementing 
-ingredient scaling as a domain service with proper aggregate boundaries.
-
-**Domain Expert (Food & Nutrition):**
-Scaling algorithms must account for non-linear ingredient relationships. Some 
-ingredients (like salt, spices) don't scale proportionally.
-
-**Lead Developer:**
-Implement using Symfony's calculation services. Consider caching scaled recipes 
-for performance.
-
-**UX/UI Designer:**
-Include visual feedback for scaling adjustments. Consider preset serving sizes 
-for common scenarios.
-```
-
-## Story Lifecycle
-
-### 1. Submission
-- Story is created via GitHub Issues or CLI
-- Initial labels are applied automatically
-- System triggers AI analysis
-
-### 2. Analysis
-- AI expert team analyzes the story
-- Relevant specialists provide feedback
-- Technical feasibility is assessed
-- Labels are updated based on analysis
-
-### 3. Refinement
-- Story author can address feedback
-- Additional iterations with AI team
-- Acceptance criteria are refined
-- Dependencies are identified
-
-### 4. Ready for Development
-- Story has clear requirements
-- Technical approach is defined
-- All blockers are resolved
-- Development team can begin work
-
-### 5. Implementation Tracking
-- Progress is tracked through development
-- AI team can provide implementation guidance
-- Story is validated against acceptance criteria
+See [MULTI_REPO_EXAMPLES.md](MULTI_REPO_EXAMPLES.md) for advanced multi-repository usage.
 
 ## Refactor Mode
 
-The refactor mode enables immediate creation of technical debt and code improvement tickets without going through the normal consensus workflow. Perfect for:
-
-- **Code Extraction**: Breaking down large components into services
-- **Performance Optimization**: Improving slow operations and bottlenecks
-- **Code Modernization**: Updating to new standards and frameworks
-- **File Organization**: Moving and renaming for better structure
-
-### Quick Examples
-
-```bash
-# Basic refactor using GitHub Issues
-# Create an issue with title starting with "Refactor:" and the system will detect it
-
-# Or use CLI for immediate tickets
-python main.py story refactor "Extract user service from controller"
-
-# Specific type and repository targeting
-python main.py story refactor "Optimize database queries" --type optimize --repos backend
-
-# Include specific files for context
-python main.py story refactor "Modernize auth components" --files "auth/*.py" --type modernize
-```
-
-**Key Benefits:**
-- ✅ **Immediate creation** - No consensus workflow delay
-- ✅ **File context** - Automatically identifies relevant files
-- ✅ **Role assignment** - Assigns appropriate experts based on refactor type
-- ✅ **Multi-repository** - Creates tailored tickets across backend/frontend
-- ✅ **Ready for development** - Tickets are immediately actionable
-
-See [REFACTOR_MODE.md](REFACTOR_MODE.md) for detailed documentation.
-
-## Story Lifecycle
-
-### 1. Submission
-
-### Be Specific
-Instead of: "Better recipe search"
-Write: "As a user with dietary restrictions, I want to filter recipes by allergens so that I can safely find meals I can eat."
-
-### Include Context
-- Mention specific user personas
-- Reference relevant domains (recipe, nutrition, etc.)
-- Consider cultural and international aspects
-- Think about mobile and kitchen contexts
-
-### Consider Technical Constraints
-- Our platform uses Symfony/DDD architecture
-- We support both web and mobile interfaces
-- Consider real-time requirements (SSE)
-- Think about data sourcing and quality
-
-### Cultural Sensitivity
-- Consider international users
-- Respect diverse food traditions
-- Think about regional ingredient variations
-- Consider multi-language support needs
-
-## Troubleshooting
-
-### Common Issues
-
-**Story not getting AI feedback:**
-- Check that the `story` label is applied
-- Ensure the description is detailed enough
-- Try adding a comment to trigger re-analysis
-
-**Labels not applying correctly:**
-- The system may need a few minutes to process
-- Manual label correction is possible
-- Contact administrators for persistent issues
-
-**CLI authentication issues:**
-- Verify GitHub token has correct permissions
-- Ensure token has `repo` and `issues` scopes
-- Check token hasn't expired
-
-### Getting Help
-
-- **GitHub Discussions**: For general questions about the story process
-- **Issues**: For bugs or problems with the automation system
-- **Documentation**: Check [docs/developer/](../developer/) for technical details
-- **AI Team**: Add comments requesting specific expert input
-
-## Advanced Features
-
-### Batch Story Creation
-Create multiple related stories:
-```bash
-python -m ai_core.main create-epic \
-  --title "Recipe Import Feature Epic" \
-  --stories "web-scraping,data-parsing,user-interface,error-handling"
-```
-
-### Story Dependencies
-Link related stories:
-```markdown
-**Dependencies:**
-- Blocked by #45 (Ingredient standardization)
-- Blocks #67 (Meal planning integration)
-```
-
-### Custom AI Analysis
-Request specific expert combinations:
-```bash
-python -m ai_core.main analyze-story \
-  --issue-number 123 \
-  --roles "system-architect,security-expert,ux-designer" \
-  --focus "architecture,security"
-```
-
----
-
-*This guide covers the complete story management workflow. For technical implementation details, see the [developer documentation](../developer/). For domain-specific guidance, consult the [AI role documentation](../ai/roles/).*
-
+See [REFACTOR_MODE.md](REFACTOR_MODE.md) for refactoring ticket creation.

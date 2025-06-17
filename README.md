@@ -56,6 +56,12 @@ A simple AI-powered tool for creating and managing user stories with expert anal
 
     - In the end we want a pipeline that can basically run 24/7 tackling one issue after the other in chronological order.
 
+The project should have an import method which imports a roadmap ( could be small ), which then through discussion turns it into;
+
+- Epics
+    - User stories
+        - (Frontend/Backend/Testing/Devops/Sysops/etc...) Story
+
 ## Setup
 
 ```bash

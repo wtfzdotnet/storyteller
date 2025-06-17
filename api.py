@@ -24,6 +24,7 @@ def get_story_manager():
     global story_manager
     if story_manager is None:
         from story_manager import StoryManager
+
         story_manager = StoryManager()
     return story_manager
 
@@ -31,30 +32,46 @@ def get_story_manager():
 # Pydantic models for API validation
 class EpicCreateRequest(BaseModel):
     """Request model for creating an Epic."""
-    
+
     title: str = Field(..., min_length=1, max_length=200, description="Epic title")
     description: str = Field(..., min_length=1, description="Epic description")
     business_value: str = Field(default="", description="Business value statement")
-    acceptance_criteria: List[str] = Field(default_factory=list, description="List of acceptance criteria")
-    target_repositories: List[str] = Field(default_factory=list, description="Target repositories")
-    estimated_duration_weeks: Optional[int] = Field(default=None, ge=1, description="Estimated duration in weeks")
+    acceptance_criteria: List[str] = Field(
+        default_factory=list, description="List of acceptance criteria"
+    )
+    target_repositories: List[str] = Field(
+        default_factory=list, description="Target repositories"
+    )
+    estimated_duration_weeks: Optional[int] = Field(
+        default=None, ge=1, description="Estimated duration in weeks"
+    )
 
 
 class EpicUpdateRequest(BaseModel):
     """Request model for updating an Epic."""
-    
-    title: Optional[str] = Field(None, min_length=1, max_length=200, description="Epic title")
-    description: Optional[str] = Field(None, min_length=1, description="Epic description")
+
+    title: Optional[str] = Field(
+        None, min_length=1, max_length=200, description="Epic title"
+    )
+    description: Optional[str] = Field(
+        None, min_length=1, description="Epic description"
+    )
     business_value: Optional[str] = Field(None, description="Business value statement")
-    acceptance_criteria: Optional[List[str]] = Field(None, description="List of acceptance criteria")
-    target_repositories: Optional[List[str]] = Field(None, description="Target repositories")
-    estimated_duration_weeks: Optional[int] = Field(None, ge=1, description="Estimated duration in weeks")
+    acceptance_criteria: Optional[List[str]] = Field(
+        None, description="List of acceptance criteria"
+    )
+    target_repositories: Optional[List[str]] = Field(
+        None, description="Target repositories"
+    )
+    estimated_duration_weeks: Optional[int] = Field(
+        None, ge=1, description="Estimated duration in weeks"
+    )
     status: Optional[str] = Field(None, description="Epic status")
 
 
 class EpicResponse(BaseModel):
     """Response model for Epic data."""
-    
+
     id: str
     title: str
     description: str
@@ -69,14 +86,14 @@ class EpicResponse(BaseModel):
 
 class EpicListResponse(BaseModel):
     """Response model for listing Epics."""
-    
+
     epics: List[EpicResponse]
     total: int
 
 
 class MessageResponse(BaseModel):
     """Generic message response."""
-    
+
     message: str
     success: bool = True
 
@@ -124,14 +141,16 @@ async def create_epic(epic_data: EpicCreateRequest):
 @app.get("/epics", response_model=EpicListResponse)
 async def list_epics(
     status: Optional[str] = Query(None, description="Filter by status"),
-    limit: int = Query(100, ge=1, le=1000, description="Maximum number of epics to return"),
+    limit: int = Query(
+        100, ge=1, le=1000, description="Maximum number of epics to return"
+    ),
     offset: int = Query(0, ge=0, description="Number of epics to skip"),
 ):
     """List all Epics with optional filtering."""
     try:
         sm = get_story_manager()
         all_epics = sm.get_all_epics()
-        
+
         # Filter by status if provided
         if status:
             try:
@@ -139,14 +158,14 @@ async def list_epics(
                 all_epics = [epic for epic in all_epics if epic.status == status_enum]
             except ValueError:
                 raise HTTPException(
-                    status_code=400, 
-                    detail=f"Invalid status. Valid values: {[s.value for s in StoryStatus]}"
+                    status_code=400,
+                    detail=f"Invalid status. Valid values: {[s.value for s in StoryStatus]}",
                 )
-        
+
         # Apply pagination
         total = len(all_epics)
-        epics = all_epics[offset:offset + limit]
-        
+        epics = all_epics[offset : offset + limit]
+
         return EpicListResponse(
             epics=[epic_to_response(epic) for epic in epics],
             total=total,
@@ -165,10 +184,10 @@ async def get_epic(epic_id: str):
         epic = sm.get_story(epic_id)
         if not epic:
             raise HTTPException(status_code=404, detail="Epic not found")
-        
+
         if not isinstance(epic, Epic):
             raise HTTPException(status_code=400, detail="Story is not an Epic")
-        
+
         return epic_to_response(epic)
     except HTTPException:
         raise
@@ -185,10 +204,10 @@ async def update_epic(epic_id: str, update_data: EpicUpdateRequest):
         epic = sm.get_story(epic_id)
         if not epic:
             raise HTTPException(status_code=404, detail="Epic not found")
-        
+
         if not isinstance(epic, Epic):
             raise HTTPException(status_code=400, detail="Story is not an Epic")
-        
+
         # Update fields that were provided
         if update_data.title is not None:
             epic.title = update_data.title
@@ -208,15 +227,15 @@ async def update_epic(epic_id: str, update_data: EpicUpdateRequest):
             except ValueError:
                 raise HTTPException(
                     status_code=400,
-                    detail=f"Invalid status. Valid values: {[s.value for s in StoryStatus]}"
+                    detail=f"Invalid status. Valid values: {[s.value for s in StoryStatus]}",
                 )
-        
+
         # Update timestamp
         epic.updated_at = datetime.now()
-        
+
         # Save to database
         sm.database.save_story(epic)
-        
+
         return epic_to_response(epic)
     except HTTPException:
         raise
@@ -233,16 +252,18 @@ async def delete_epic(epic_id: str):
         epic = sm.get_story(epic_id)
         if not epic:
             raise HTTPException(status_code=404, detail="Epic not found")
-        
+
         if not isinstance(epic, Epic):
             raise HTTPException(status_code=400, detail="Story is not an Epic")
-        
+
         # Delete epic and children (cascade)
         success = sm.delete_story(epic_id)
         if not success:
             raise HTTPException(status_code=500, detail="Failed to delete epic")
-        
-        return MessageResponse(message=f"Epic {epic_id} and all child stories deleted successfully")
+
+        return MessageResponse(
+            message=f"Epic {epic_id} and all child stories deleted successfully"
+        )
     except HTTPException:
         raise
     except Exception as e:
@@ -257,7 +278,7 @@ async def get_epic_hierarchy(epic_id: str):
         hierarchy = sm.get_epic_hierarchy(epic_id)
         if not hierarchy:
             raise HTTPException(status_code=404, detail="Epic hierarchy not found")
-        
+
         # Convert to a JSON-serializable format
         return {
             "epic": epic_to_response(hierarchy.epic).model_dump(),
@@ -302,4 +323,6 @@ async def get_epic_hierarchy(epic_id: str):
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to get epic hierarchy: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to get epic hierarchy: {str(e)}"
+        )

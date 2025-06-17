@@ -56,7 +56,9 @@ jobs:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         GITHUB_REPOSITORY: ${{ github.repository }}
       run: |
-        python test_multi_repo.py
+        python test_basic.py
+        python test_hierarchical_models.py
+        python test_integration.py
 
   build-and-push:
     name: Build and Push Docker Image

@@ -8,8 +8,10 @@ from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional, Set
 
 from config import Config, get_config, load_role_files
+from database import DatabaseManager
 from github_handler import GitHubHandler, IssueData
 from llm_handler import LLMHandler, LLMResponse
+from models import Epic, StoryHierarchy, StoryStatus, SubStory, UserStory
 
 logger = logging.getLogger(__name__)
 
@@ -56,6 +58,7 @@ class StoryProcessor:
         self.config = config or get_config()
         self.llm_handler = LLMHandler(self.config)
         self.github_handler = GitHubHandler(self.config)
+        self.database = DatabaseManager()  # Add database support
         self.role_definitions = load_role_files()
         self._processing_queue: Dict[str, ProcessedStory] = {}
 
@@ -73,8 +76,8 @@ class StoryProcessor:
 2. Which repositories (backend, frontend, storyteller) are most relevant
 3. Key themes and complexity indicators
 
-Available expert roles include: system-architect, lead-developer, security-expert, 
-domain-expert-food-nutrition, professional-chef, ux-ui-designer, product-owner, 
+Available expert roles include: system-architect, lead-developer, security-expert,
+domain-expert-food-nutrition, professional-chef, ux-ui-designer, product-owner,
 qa-engineer, devops-engineer, ai-expert, and various nutrition specialists.
 
 Repository types:
@@ -462,6 +465,7 @@ class StoryManager:
 
     def __init__(self, config: Optional[Config] = None):
         self.processor = StoryProcessor(config)
+        self.database = self.processor.database
 
     async def create_story(
         self,
@@ -495,6 +499,131 @@ class StoryManager:
 
         return await self.processor.process_story(story_request)
 
+    # New hierarchical story management methods
+
+    def create_epic(
+        self,
+        title: str,
+        description: str,
+        business_value: str = "",
+        acceptance_criteria: List[str] = None,
+        target_repositories: List[str] = None,
+        estimated_duration_weeks: Optional[int] = None,
+    ) -> Epic:
+        """Create a new epic."""
+        epic = Epic(
+            title=title,
+            description=description,
+            business_value=business_value,
+            acceptance_criteria=acceptance_criteria or [],
+            target_repositories=target_repositories or [],
+            estimated_duration_weeks=estimated_duration_weeks,
+        )
+
+        self.database.save_story(epic)
+        logger.info(f"Created epic: {epic.title} (ID: {epic.id})")
+        return epic
+
+    def create_user_story(
+        self,
+        epic_id: str,
+        title: str,
+        description: str,
+        user_persona: str = "",
+        user_goal: str = "",
+        acceptance_criteria: List[str] = None,
+        target_repositories: List[str] = None,
+        story_points: Optional[int] = None,
+    ) -> UserStory:
+        """Create a new user story under an epic."""
+        user_story = UserStory(
+            epic_id=epic_id,
+            title=title,
+            description=description,
+            user_persona=user_persona,
+            user_goal=user_goal,
+            acceptance_criteria=acceptance_criteria or [],
+            target_repositories=target_repositories or [],
+            story_points=story_points,
+        )
+
+        self.database.save_story(user_story)
+        logger.info(
+            f"Created user story: {user_story.title} (ID: {user_story.id}) under epic {epic_id}"
+        )
+        return user_story
+
+    def create_sub_story(
+        self,
+        user_story_id: str,
+        title: str,
+        description: str,
+        department: str = "",
+        technical_requirements: List[str] = None,
+        dependencies: List[str] = None,
+        target_repository: str = "",
+        assignee: Optional[str] = None,
+        estimated_hours: Optional[float] = None,
+    ) -> SubStory:
+        """Create a new sub-story under a user story."""
+        sub_story = SubStory(
+            user_story_id=user_story_id,
+            title=title,
+            description=description,
+            department=department,
+            technical_requirements=technical_requirements or [],
+            dependencies=dependencies or [],
+            target_repository=target_repository,
+            assignee=assignee,
+            estimated_hours=estimated_hours,
+        )
+
+        self.database.save_story(sub_story)
+        logger.info(
+            f"Created sub-story: {sub_story.title} (ID: {sub_story.id}) under user story {user_story_id}"
+        )
+        return sub_story
+
+    def get_epic_hierarchy(self, epic_id: str) -> Optional[StoryHierarchy]:
+        """Get complete epic hierarchy including all user stories and sub-stories."""
+        return self.database.get_epic_hierarchy(epic_id)
+
+    def get_story(self, story_id: str):
+        """Get a story by ID."""
+        return self.database.get_story(story_id)
+
+    def update_story_status(self, story_id: str, status: StoryStatus) -> bool:
+        """Update the status of a story."""
+        return self.database.update_story_status(story_id, status)
+
+    def get_all_epics(self) -> List[Epic]:
+        """Get all epics in the system."""
+        return self.database.get_all_epics()
+
+    def delete_story(self, story_id: str) -> bool:
+        """Delete a story and all its children."""
+        return self.database.delete_story(story_id)
+
+    def add_story_relationship(
+        self,
+        source_id: str,
+        target_id: str,
+        relationship_type: str,
+        metadata: Dict[str, Any] = None,
+    ):
+        """Add a relationship between two stories."""
+        self.database.add_story_relationship(
+            source_id, target_id, relationship_type, metadata
+        )
+
+    def link_github_issue(
+        self, story_id: str, repository_name: str, issue_number: int, issue_url: str
+    ):
+        """Link a story to a GitHub issue."""
+        self.database.link_github_issue(
+            story_id, repository_name, issue_number, issue_url
+        )
+
     def get_available_roles(self) -> List[str]:
         """Get list of available expert roles."""
         return self.processor.list_available_roles()
@@ -508,4 +637,17 @@ class StoryManager:
 
     def get_story_status(self, story_id: str) -> Optional[Dict[str, Any]]:
         """Get status of a story by ID."""
+        # First check the hierarchical database
+        story = self.database.get_story(story_id)
+        if story:
+            return {
+                "story_id": story.id,
+                "story_type": type(story).__name__.lower(),
+                "status": story.status.value,
+                "title": story.title,
+                "created_at": story.created_at.isoformat(),
+                "updated_at": story.updated_at.isoformat(),
+            }
+
+        # Fall back to legacy processing queue
         return self.processor.get_story_status(story_id)

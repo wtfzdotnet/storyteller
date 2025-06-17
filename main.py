@@ -14,7 +14,7 @@ from rich.syntax import Syntax
 from rich.table import Table
 
 from automation.workflow_processor import WorkflowProcessor
-from config import Config, get_config
+from config import get_config
 
 # Initialize CLI application
 app = typer.Typer(

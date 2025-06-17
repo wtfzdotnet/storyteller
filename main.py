@@ -539,6 +539,46 @@ def test_mcp_server(
     asyncio.run(_test_server())
 
 
+# API server commands
+api_app = typer.Typer(help="API server commands")
+app.add_typer(api_app, name="api")
+
+
+@api_app.command("start")
+def start_api_server(
+    host: str = typer.Option("localhost", "--host", help="Host to bind API server"),
+    port: int = typer.Option(8000, "--port", help="Port to bind API server"),
+    reload: bool = typer.Option(
+        False, "--reload", help="Enable auto-reload for development"
+    ),
+    debug: bool = typer.Option(False, "--debug", help="Enable debug logging"),
+):
+    """Start the Epic management API server."""
+
+    setup_logging(debug)
+
+    try:
+        import uvicorn
+
+        console.print(f"[green]Starting API server on http://{host}:{port}[/green]")
+        console.print("[blue]API Documentation available at:[/blue]")
+        console.print(f"  • Swagger UI: http://{host}:{port}/docs")
+        console.print(f"  • ReDoc: http://{host}:{port}/redoc")
+
+        uvicorn.run(
+            "api:app",
+            host=host,
+            port=port,
+            reload=reload,
+            log_level="debug" if debug else "info",
+        )
+    except Exception as e:
+        console.print(f"[red]✗ Failed to start API server:[/red] {e}")
+        if debug:
+            console.print_exception()
+        sys.exit(1)
+
+
 # Configuration and validation commands
 @app.command("validate")
 def validate_configuration(
@@ -568,12 +608,12 @@ def validate_configuration(
                 console.print("[green]✓[/green] Configuration is valid!")
 
                 data = result.data
-                console.print(f"\n[bold]Configuration Summary:[/bold]")
+                console.print("\n[bold]Configuration Summary:[/bold]")
                 console.print(f"• Repositories: {data['repositories']}")
                 console.print(f"• Role files: {data['role_files']}")
                 console.print(f"• LLM provider: {data['llm_provider']}")
             else:
-                console.print(f"[red]✗[/red] Configuration issues found:")
+                console.print("[red]✗[/red] Configuration issues found:")
                 for issue in result.data["issues"]:
                     console.print(f"  • {issue}")
                 sys.exit(1)

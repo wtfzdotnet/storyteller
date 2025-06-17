@@ -15,6 +15,10 @@ ollama>=0.2.0
 # Data handling
 pydantic>=2.0.0
 
+# Database
+sqlalchemy>=2.0.0
+alembic>=1.13.0
+
 # Additional utilities that might be used
 requests>=2.31.0
 asyncio-mqtt>=0.13.0

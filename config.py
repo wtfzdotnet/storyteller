@@ -55,6 +55,10 @@ class Config:
     # Development Configuration
     debug_mode: bool = False
 
+    # Database Configuration
+    database_url: str = "sqlite:///./storyteller.db"
+    database_echo: bool = False
+
     # Multi-Repository Configuration
     repositories: Dict[str, RepositoryConfig] = field(default_factory=dict)
     default_repository: str = "backend"
@@ -94,6 +98,8 @@ def load_config() -> Config:
             os.getenv("AUTO_CONSENSUS_MAX_ITERATIONS", "10")
         ),
         debug_mode=os.getenv("DEBUG_MODE", "false").lower() == "true",
+        database_url=os.getenv("DATABASE_URL", "sqlite:///./storyteller.db"),
+        database_echo=os.getenv("DATABASE_ECHO", "false").lower() == "true",
     )
 
     # Load multi-repository configuration if exists

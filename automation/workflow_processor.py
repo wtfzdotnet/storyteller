@@ -1,6 +1,5 @@
 """Workflow processor for CLI and automation interfaces."""
 
-import asyncio
 import logging
 from dataclasses import dataclass
 from pathlib import Path

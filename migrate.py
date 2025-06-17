@@ -8,14 +8,14 @@ from pathlib import Path
 # Add the current directory to Python path for imports
 sys.path.insert(0, str(Path(__file__).parent))
 
-from database import run_migrations, DatabaseManager
-from models import Epic, UserStory, SubStory, StoryStatus
+from database import DatabaseManager, run_migrations
+from models import Epic, StoryStatus, SubStory, UserStory
 
 
 def create_sample_data(db_manager: DatabaseManager):
     """Create sample data to demonstrate the hierarchical structure."""
     print("\nCreating sample data...")
-    
+
     # Create a sample epic
     epic = Epic(
         title="User Authentication System",
@@ -25,15 +25,15 @@ def create_sample_data(db_manager: DatabaseManager):
             "Users can register with email and password",
             "Users can login with OAuth providers (Google, GitHub)",
             "User sessions are secure and properly managed",
-            "Password reset functionality is available"
+            "Password reset functionality is available",
         ],
         target_repositories=["backend", "frontend"],
-        estimated_duration_weeks=4
+        estimated_duration_weeks=4,
     )
-    
+
     epic_id = db_manager.save_story(epic)
     print(f"✓ Created epic: {epic.title} (ID: {epic_id})")
-    
+
     # Create user stories for the epic
     user_stories = [
         UserStory(
@@ -46,10 +46,10 @@ def create_sample_data(db_manager: DatabaseManager):
                 "User can enter email and password",
                 "Email validation is performed",
                 "Password strength requirements are enforced",
-                "Confirmation email is sent"
+                "Confirmation email is sent",
             ],
             target_repositories=["backend", "frontend"],
-            story_points=5
+            story_points=5,
         ),
         UserStory(
             epic_id=epic_id,
@@ -61,19 +61,19 @@ def create_sample_data(db_manager: DatabaseManager):
                 "Google OAuth integration works",
                 "GitHub OAuth integration works",
                 "User profile is created from OAuth data",
-                "Existing accounts can be linked"
+                "Existing accounts can be linked",
             ],
             target_repositories=["backend", "frontend"],
-            story_points=8
-        )
+            story_points=8,
+        ),
     ]
-    
+
     user_story_ids = []
     for user_story in user_stories:
         story_id = db_manager.save_story(user_story)
         user_story_ids.append(story_id)
         print(f"✓ Created user story: {user_story.title} (ID: {story_id})")
-    
+
     # Create sub-stories for the first user story
     sub_stories = [
         SubStory(
@@ -85,10 +85,10 @@ def create_sample_data(db_manager: DatabaseManager):
                 "Create User model with validations",
                 "Implement registration endpoint",
                 "Add email verification system",
-                "Set up password hashing"
+                "Set up password hashing",
             ],
             target_repository="backend",
-            estimated_hours=16
+            estimated_hours=16,
         ),
         SubStory(
             user_story_id=user_story_ids[0],
@@ -99,70 +99,70 @@ def create_sample_data(db_manager: DatabaseManager):
                 "Design registration form UI",
                 "Add form validation",
                 "Integrate with backend API",
-                "Add loading and error states"
+                "Add loading and error states",
             ],
             dependencies=[],
             target_repository="frontend",
-            estimated_hours=12
-        )
+            estimated_hours=12,
+        ),
     ]
-    
+
     for sub_story in sub_stories:
         story_id = db_manager.save_story(sub_story)
         print(f"✓ Created sub-story: {sub_story.title} (ID: {story_id})")
-    
+
     print(f"\nSample data created successfully!")
-    
+
     # Demonstrate hierarchy retrieval
     hierarchy = db_manager.get_epic_hierarchy(epic_id)
     if hierarchy:
         epic_progress = hierarchy.get_epic_progress()
-        print(f"\nEpic Progress: {epic_progress['completed']}/{epic_progress['total']} user stories completed ({epic_progress['percentage']}%)")
-        
+        print(
+            f"\nEpic Progress: {epic_progress['completed']}/{epic_progress['total']} user stories completed ({epic_progress['percentage']}%)"
+        )
+
         for us in hierarchy.user_stories:
             us_progress = hierarchy.get_user_story_progress(us.id)
-            print(f"  User Story '{us.title}': {us_progress['completed']}/{us_progress['total']} sub-stories completed ({us_progress['percentage']}%)")
+            print(
+                f"  User Story '{us.title}': {us_progress['completed']}/{us_progress['total']} sub-stories completed ({us_progress['percentage']}%)"
+            )
 
 
 def main():
     """Main migration script entry point."""
     parser = argparse.ArgumentParser(description="Storyteller Database Migration")
     parser.add_argument(
-        "--db-path", 
+        "--db-path",
         default="storyteller.db",
-        help="Path to the SQLite database file (default: storyteller.db)"
+        help="Path to the SQLite database file (default: storyteller.db)",
     )
     parser.add_argument(
-        "--sample-data", 
-        action="store_true",
-        help="Create sample data after migration"
+        "--sample-data", action="store_true", help="Create sample data after migration"
     )
     parser.add_argument(
-        "--reset",
-        action="store_true", 
-        help="Reset database by removing existing file"
+        "--reset", action="store_true", help="Reset database by removing existing file"
     )
-    
+
     args = parser.parse_args()
-    
+
     # Remove existing database if reset requested
     if args.reset:
         db_path = Path(args.db_path)
         if db_path.exists():
             db_path.unlink()
             print(f"✓ Removed existing database: {db_path}")
-    
+
     try:
         # Run migrations
         db_manager = run_migrations(args.db_path)
-        
+
         # Create sample data if requested
         if args.sample_data:
             create_sample_data(db_manager)
-        
+
         print(f"\n🎉 Migration completed successfully!")
         print(f"Database created at: {Path(args.db_path).absolute()}")
-        
+
     except Exception as e:
         print(f"❌ Migration failed: {e}")
         sys.exit(1)

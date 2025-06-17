@@ -3,21 +3,20 @@
 import asyncio
 import json
 import logging
-from dataclasses import asdict, dataclass
+from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Callable, Dict, Optional
+
+from template_manager import TemplateManager
 
 from automation.workflow_processor import WorkflowProcessor
 from config import (
     Config,
-    LanguageType,
-    PlatformChoice,
     get_config,
     get_repository_config,
     get_repository_ruleset,
 )
 from story_manager import StoryManager
-from template_manager import TemplateManager
 
 logger = logging.getLogger(__name__)
 

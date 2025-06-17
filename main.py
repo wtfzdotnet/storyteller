@@ -539,6 +539,45 @@ def test_mcp_server(
     asyncio.run(_test_server())
 
 
+# API server commands
+api_app = typer.Typer(help="API server commands")
+app.add_typer(api_app, name="api")
+
+
+@api_app.command("start")
+def start_api_server(
+    host: str = typer.Option("localhost", "--host", help="Host to bind API server"),
+    port: int = typer.Option(8000, "--port", help="Port to bind API server"),
+    reload: bool = typer.Option(False, "--reload", help="Enable auto-reload for development"),
+    debug: bool = typer.Option(False, "--debug", help="Enable debug logging"),
+):
+    """Start the Epic management API server."""
+    
+    setup_logging(debug)
+    
+    try:
+        import uvicorn
+        from api import app as api_app
+        
+        console.print(f"[green]Starting API server on http://{host}:{port}[/green]")
+        console.print("[blue]API Documentation available at:[/blue]")
+        console.print(f"  • Swagger UI: http://{host}:{port}/docs")
+        console.print(f"  • ReDoc: http://{host}:{port}/redoc")
+        
+        uvicorn.run(
+            "api:app",
+            host=host,
+            port=port,
+            reload=reload,
+            log_level="debug" if debug else "info",
+        )
+    except Exception as e:
+        console.print(f"[red]✗ Failed to start API server:[/red] {e}")
+        if debug:
+            console.print_exception()
+        sys.exit(1)
+
+
 # Configuration and validation commands
 @app.command("validate")
 def validate_configuration(

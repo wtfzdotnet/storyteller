@@ -613,11 +613,28 @@ class StoryManager:
         target_id: str,
         relationship_type: str,
         metadata: Dict[str, Any] = None,
+        validate: bool = True,
     ):
-        """Add a relationship between two stories."""
+        """Add a relationship between two stories with optional validation."""
         self.database.add_story_relationship(
-            source_id, target_id, relationship_type, metadata
+            source_id, target_id, relationship_type, metadata, validate
         )
+
+    def validate_parent_child_relationship(self, child_id: str, parent_id: str) -> bool:
+        """Validate that a parent-child relationship is valid (no cycles)."""
+        return self.database.validate_parent_child_relationship(child_id, parent_id)
+
+    def get_dependency_chain(self, story_id: str) -> List[Dict[str, Any]]:
+        """Get the full dependency chain for a story."""
+        return self.database.get_dependency_chain(story_id)
+
+    def validate_relationship_integrity(self) -> List[str]:
+        """Validate all relationships for integrity issues and return any problems found."""
+        return self.database.validate_relationship_integrity()
+
+    def get_story_relationships(self, story_id: str) -> List[Dict[str, Any]]:
+        """Get all relationships for a story."""
+        return self.database.get_story_relationships(story_id)
 
     def link_github_issue(
         self, story_id: str, repository_name: str, issue_number: int, issue_url: str

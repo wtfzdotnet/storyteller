@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+from assignment_engine import AssignmentEngine
 from automation.label_manager import LabelManager
 from config import Config, get_config
 from story_manager import StoryManager
@@ -29,6 +30,7 @@ class WorkflowProcessor:
         self.config = config or get_config()
         self.story_manager = StoryManager(self.config)
         self.label_manager = LabelManager(self.config)
+        self.assignment_engine = AssignmentEngine(self.config)
 
     async def create_story_workflow(
         self,
@@ -369,4 +371,134 @@ class WorkflowProcessor:
             logger.error(f"Batch processing failed: {e}")
             return WorkflowResult(
                 success=False, message="Batch processing failed", error=str(e)
+            )
+
+    async def process_story_assignment(
+        self,
+        story_id: str,
+        story_content: str,
+        story_metadata: Optional[Dict[str, Any]] = None,
+        manual_override: bool = False,
+    ) -> WorkflowResult:
+        """Process automatic assignment for a story."""
+
+        try:
+            # Get assignment decision from the engine
+            assignment_decision = self.assignment_engine.process_assignment(
+                story_id=story_id,
+                story_content=story_content,
+                story_metadata=story_metadata,
+                manual_override=manual_override,
+            )
+
+            if not assignment_decision.should_assign:
+                return WorkflowResult(
+                    success=True,
+                    message=f"Story {story_id} not assigned: {assignment_decision.explanation}",
+                    data={
+                        "assigned": False,
+                        "reason": assignment_decision.reason.value,
+                        "explanation": assignment_decision.explanation,
+                        "metadata": assignment_decision.metadata,
+                    },
+                )
+
+            # If assignment is approved, update the story if it has GitHub issues
+            assignment_data = {
+                "assigned": True,
+                "assignee": assignment_decision.assignee,
+                "reason": assignment_decision.reason.value,
+                "explanation": assignment_decision.explanation,
+                "metadata": assignment_decision.metadata,
+            }
+
+            # Check if story has associated GitHub issues to update
+            if story_metadata and "github_issues" in story_metadata:
+                github_issues = story_metadata["github_issues"]
+                github_handler = self.story_manager.github_handler
+
+                for issue_info in github_issues:
+                    repository_name = issue_info.get("repository")
+                    issue_number = issue_info.get("issue_number")
+
+                    if repository_name and issue_number:
+                        try:
+                            # Update issue assignee
+                            await github_handler.update_issue(
+                                repository_name=repository_name,
+                                issue_number=issue_number,
+                                assignees=[assignment_decision.assignee],
+                            )
+
+                            # Add assignment notification
+                            await github_handler.notify_assignment(
+                                repository_name=repository_name,
+                                issue_number=issue_number,
+                                assignee=assignment_decision.assignee,
+                                assignment_reason=assignment_decision.explanation,
+                                additional_context=assignment_decision.metadata,
+                            )
+
+                            logger.info(
+                                f"Updated assignment for issue #{issue_number} "
+                                f"in {repository_name}"
+                            )
+
+                        except Exception as e:
+                            logger.error(
+                                f"Failed to update GitHub issue #{issue_number}: {e}"
+                            )
+                            # Continue with other issues
+
+            return WorkflowResult(
+                success=True,
+                message=f"Story {story_id} assigned to {assignment_decision.assignee}",
+                data=assignment_data,
+            )
+
+        except Exception as e:
+            logger.error(f"Assignment processing failed for story {story_id}: {e}")
+            return WorkflowResult(
+                success=False,
+                message=f"Assignment processing failed for story {story_id}",
+                error=str(e),
+            )
+
+    def get_assignment_queue_workflow(self) -> WorkflowResult:
+        """Get the current assignment queue in chronological order."""
+
+        try:
+            queue = self.assignment_engine.get_assignment_queue()
+            statistics = self.assignment_engine.get_assignment_statistics()
+
+            return WorkflowResult(
+                success=True,
+                message=f"Retrieved assignment queue ({len(queue)} items)",
+                data={"queue": queue, "statistics": statistics},
+            )
+
+        except Exception as e:
+            logger.error(f"Failed to get assignment queue: {e}")
+            return WorkflowResult(
+                success=False, message="Failed to get assignment queue", error=str(e)
+            )
+
+    def get_assignment_statistics_workflow(self) -> WorkflowResult:
+        """Get assignment statistics for monitoring."""
+
+        try:
+            statistics = self.assignment_engine.get_assignment_statistics()
+
+            return WorkflowResult(
+                success=True,
+                message="Assignment statistics retrieved",
+                data=statistics,
+            )
+
+        except Exception as e:
+            logger.error(f"Failed to get assignment statistics: {e}")
+            return WorkflowResult(
+                success=False,
+                message="Failed to get assignment statistics",
+                error=str(e),
             )

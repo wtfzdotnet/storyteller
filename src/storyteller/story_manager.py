@@ -1155,7 +1155,7 @@ Available departments: {available_departments}
 
 Repository Context Information:
 {chr(10).join([
-    f"- {ctx.get('repository', 'unknown')} ({ctx.get('repo_type', 'unknown')}): "
+        f"- {ctx.get('repository', 'unknown')} ({ctx.get('repo_type', 'unknown')}): "
     f"Technologies: {', '.join(ctx.get('key_technologies', [])[:3])}, "
     f"Dependencies: {', '.join(ctx.get('dependencies', [])[:3])}"
     for ctx in (repository_contexts or [])

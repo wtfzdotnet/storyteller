@@ -2,6 +2,7 @@
 
 import os
 from unittest.mock import patch
+import pytest
 
 # Set dummy environment for testing
 os.environ["GITHUB_TOKEN"] = "test_token"
@@ -10,8 +11,8 @@ os.environ["DEFAULT_LLM_PROVIDER"] = "github"
 
 def test_webhook_handler_import():
     """Test that webhook handler can be imported."""
-    from config import get_config
-    from webhook_handler import WebhookHandler
+    from src.storyteller.config import get_config
+    from src.storyteller.webhook_handler import WebhookHandler
 
     config = get_config()
     handler = WebhookHandler(config)
@@ -100,11 +101,12 @@ def test_status_mapping_configuration():
     print("✓ Custom status mapping configuration works correctly")
 
 
+@pytest.mark.asyncio
 async def test_webhook_payload_processing():
     """Test processing of GitHub webhook payloads."""
-    from config import get_config
-    from models import Epic, StoryStatus
-    from webhook_handler import WebhookHandler
+    from src.storyteller.config import get_config
+    from src.storyteller.models import Epic, StoryStatus
+    from src.storyteller.webhook_handler import WebhookHandler
 
     config = get_config()
     handler = WebhookHandler(config)

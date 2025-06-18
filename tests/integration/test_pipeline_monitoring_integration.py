@@ -173,7 +173,7 @@ class TestPipelineMonitoringIntegration:
 
             # Verify processing succeeded but no notification sent
             assert result["status"] == "processed"
-            assert result.get("notification_sent") == False
+            assert result.get("notification_sent")  is False
 
             # Verify no comment was added
             mock_monitor.return_value.github_handler.add_issue_comment.assert_not_called()
@@ -268,7 +268,7 @@ class TestPipelineMonitoringIntegration:
             processor = WorkflowProcessor(self.config)
             result = processor.get_pipeline_dashboard_workflow(time_range="24h")
 
-            assert result.success == True
+            assert result.success  is True
             assert "dashboard data retrieved" in result.message.lower()
             assert result.data is not None
 

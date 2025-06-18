@@ -1,0 +1,6 @@
+[flake8]
+max-line-length = 88
+ignore = E203, E501, W503
+per-file-ignores = 
+    # Allow import after sys.path modification in test files
+    tests/*:E402

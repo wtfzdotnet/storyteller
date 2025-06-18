@@ -7,17 +7,19 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 # Add src to path for imports
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../../src/storyteller"))
+sys.path.insert(
+    0, os.path.join(os.path.dirname(__file__), "../../src/storyteller")
+)
 
-from config import Config
-from models import (
+from config import Config  # noqa: E402
+from models import (  # noqa: E402
     FailureCategory,
     FailureSeverity,
     PipelineFailure,
     PipelineRun,
     PipelineStatus,
 )
-from webhook_handler import WebhookHandler
+from webhook_handler import WebhookHandler  # noqa: E402
 
 
 class TestWebhookHandlerPipeline:
@@ -67,7 +69,7 @@ class TestWebhookHandlerPipeline:
         assert result["status"] == "processed"
         assert result["pipeline_status"] == "success"
         assert result["failure_count"] == 0
-        assert result["notification_sent"] == False
+        assert result["notification_sent"] is False
 
     @pytest.mark.asyncio
     async def test_handle_workflow_run_event_failure(self):
@@ -114,7 +116,7 @@ class TestWebhookHandlerPipeline:
         assert result["status"] == "processed"
         assert result["pipeline_status"] == "failure"
         assert result["failure_count"] == 1
-        assert result["notification_sent"] == True
+        assert result["notification_sent"] is True
 
     @pytest.mark.asyncio
     async def test_handle_workflow_run_event_processing_error(self):
@@ -141,7 +143,7 @@ class TestWebhookHandlerPipeline:
 
         should_notify = self.handler._should_notify_agent(pipeline_run)
 
-        assert should_notify == False
+        assert should_notify is False
 
     def test_should_notify_agent_high_severity(self):
         """Test notification decision with high severity failures."""
@@ -158,7 +160,7 @@ class TestWebhookHandlerPipeline:
 
         should_notify = self.handler._should_notify_agent(pipeline_run)
 
-        assert should_notify == True
+        assert should_notify is True
 
     def test_should_notify_agent_repeated_failures(self):
         """Test notification decision with repeated failures."""
@@ -176,7 +178,7 @@ class TestWebhookHandlerPipeline:
 
         should_notify = self.handler._should_notify_agent(pipeline_run)
 
-        assert should_notify == True
+        assert should_notify is True
 
     def test_should_notify_agent_low_severity_no_retries(self):
         """Test notification decision with low severity, no retries."""
@@ -194,7 +196,7 @@ class TestWebhookHandlerPipeline:
 
         should_notify = self.handler._should_notify_agent(pipeline_run)
 
-        assert should_notify == False
+        assert should_notify is False
 
     def test_create_failure_notification(self):
         """Test creation of failure notification message."""
@@ -286,7 +288,7 @@ class TestWebhookHandlerPipeline:
             )
 
         assert result is not None
-        assert result["notification_sent"] == True
+        assert result["notification_sent"] is True
         assert result["issues_notified"] == [42]
         assert result["failure_count"] == 1
 

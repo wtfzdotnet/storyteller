@@ -1362,7 +1362,7 @@ class DatabaseManager:
 
         with self.get_connection() as conn:
             query = """
-                SELECT * FROM pipeline_failures 
+                SELECT * FROM pipeline_failures
                 WHERE detected_at >= datetime('now', '-{} days')
             """.format(
                 days
@@ -1392,7 +1392,7 @@ class DatabaseManager:
 
         with self.get_connection() as conn:
             query = """
-                SELECT * FROM failure_patterns 
+                SELECT * FROM failure_patterns
                 WHERE last_seen >= datetime('now', '-{} days')
                 ORDER BY failure_count DESC
             """.format(
@@ -1429,7 +1429,7 @@ class DatabaseManager:
 
         with self.get_connection() as conn:
             query = """
-                SELECT * FROM pipeline_runs 
+                SELECT * FROM pipeline_runs
                 WHERE started_at >= datetime('now', '-{} days')
             """.format(
                 days

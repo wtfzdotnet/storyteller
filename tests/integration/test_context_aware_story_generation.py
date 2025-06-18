@@ -32,6 +32,17 @@ class TestContextAwareStoryGeneration(unittest.TestCase):
         self.story_processor.database.db_path = Path(self.temp_file.name)
         self.story_processor.database.init_database()
 
+        # Add mock role definitions
+        self.story_processor.role_definitions = {
+            "system-architect": "You are a system architect expert.",
+            "frontend-developer": "You are a frontend developer expert.",
+            "backend-developer": "You are a backend developer expert.",
+            "lead-developer": "You are a lead developer expert.",
+            "database-expert": "You are a database expert.",
+            "security-expert": "You are a security expert.",
+            "qa-engineer": "You are a QA engineer expert.",
+        }
+
     def tearDown(self):
         """Clean up test dependencies."""
         Path(self.temp_file.name).unlink(missing_ok=True)

@@ -3,10 +3,11 @@
 import asyncio
 import os
 from unittest.mock import Mock, patch
+import pytest
 
-from config import Config
-from github_handler import GitHubHandler
-from models import ProjectData, ProjectFieldValue
+from src.storyteller.config import Config
+from src.storyteller.github_handler import GitHubHandler
+from src.storyteller.models import ProjectData, ProjectFieldValue
 
 # Set dummy environment for testing
 os.environ["GITHUB_TOKEN"] = "test_token"
@@ -90,6 +91,7 @@ class TestGitHubProjectsIntegration:
             assert "GraphQL errors" in str(e)
 
     @patch("github_handler.GitHubHandler._execute_graphql_query")
+    @pytest.mark.asyncio
     async def test_create_repository_project(self, mock_graphql):
         """Test creating a repository-level project."""
         # Mock repository
@@ -121,6 +123,7 @@ class TestGitHubProjectsIntegration:
             mock_graphql.assert_called_once()
 
     @patch("github_handler.GitHubHandler._execute_graphql_query")
+    @pytest.mark.asyncio
     async def test_create_organization_project(self, mock_graphql):
         """Test creating an organization-level project."""
         # Mock organization query first
@@ -151,6 +154,7 @@ class TestGitHubProjectsIntegration:
         assert mock_graphql.call_count == 2
 
     @patch("github_handler.GitHubHandler._execute_graphql_query")
+    @pytest.mark.asyncio
     async def test_add_issue_to_project(self, mock_graphql):
         """Test adding an issue to a project."""
         # Mock repository and issue
@@ -180,6 +184,7 @@ class TestGitHubProjectsIntegration:
             mock_graphql.assert_called_once()
 
     @patch("github_handler.GitHubHandler._execute_graphql_query")
+    @pytest.mark.asyncio
     async def test_get_project_fields(self, mock_graphql):
         """Test retrieving project fields."""
         mock_graphql.return_value = {
@@ -212,6 +217,7 @@ class TestGitHubProjectsIntegration:
         assert fields[1].data_type == "TEXT"
 
     @patch("github_handler.GitHubHandler._execute_graphql_query")
+    @pytest.mark.asyncio
     async def test_update_project_item_field(self, mock_graphql):
         """Test updating a project item field."""
         mock_graphql.return_value = {
@@ -225,6 +231,7 @@ class TestGitHubProjectsIntegration:
         assert result["id"] == "PVTI_test456"
         mock_graphql.assert_called_once()
 
+    @pytest.mark.asyncio
     async def test_bulk_add_issues_to_project(self):
         """Test bulk adding issues to project."""
         with patch.object(self.github_handler, "add_issue_to_project") as mock_add:

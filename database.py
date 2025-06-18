@@ -7,8 +7,6 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
 
-logger = logging.getLogger(__name__)
-
 from models import (
     Conversation,
     ConversationParticipant,
@@ -20,6 +18,8 @@ from models import (
     SubStory,
     UserStory,
 )
+
+logger = logging.getLogger(__name__)
 
 
 class DatabaseManager:
@@ -58,7 +58,8 @@ class DatabaseManager:
                 parent_id TEXT,
                 title TEXT NOT NULL,
                 description TEXT NOT NULL DEFAULT '',
-                status TEXT NOT NULL DEFAULT 'draft' CHECK (status IN ('draft', 'ready', 'in_progress', 'review', 'done', 'blocked')),
+                status TEXT NOT NULL DEFAULT 'draft'
+                    CHECK (status IN ('draft', 'ready', 'in_progress', 'review', 'done', 'blocked')),
                 created_at TEXT NOT NULL,
                 updated_at TEXT NOT NULL,
                 metadata TEXT DEFAULT '{}',
@@ -107,7 +108,8 @@ class DatabaseManager:
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 source_story_id TEXT NOT NULL,
                 target_story_id TEXT NOT NULL,
-                relationship_type TEXT NOT NULL CHECK (relationship_type IN ('depends_on', 'blocks', 'relates_to', 'duplicates')),
+                relationship_type TEXT NOT NULL
+                    CHECK (relationship_type IN ('depends_on', 'blocks', 'relates_to', 'duplicates')),
                 created_at TEXT NOT NULL,
                 metadata TEXT DEFAULT '{}',
 
@@ -154,7 +156,7 @@ class DatabaseManager:
                 user_id TEXT,
                 timestamp TEXT NOT NULL,
                 metadata TEXT DEFAULT '{}',
-                
+
                 FOREIGN KEY (story_id) REFERENCES stories (id) ON DELETE CASCADE
             )
         """
@@ -195,7 +197,7 @@ class DatabaseManager:
                 role TEXT NOT NULL,
                 repository TEXT,
                 metadata TEXT DEFAULT '{}',
-                
+
                 FOREIGN KEY (conversation_id) REFERENCES conversations (id) ON DELETE CASCADE
             )
         """
@@ -209,11 +211,12 @@ class DatabaseManager:
                 conversation_id TEXT NOT NULL,
                 participant_id TEXT NOT NULL,
                 content TEXT NOT NULL,
-                message_type TEXT NOT NULL DEFAULT 'text' CHECK (message_type IN ('text', 'system', 'decision', 'context_share')),
+                message_type TEXT NOT NULL DEFAULT 'text'
+                    CHECK (message_type IN ('text', 'system', 'decision', 'context_share')),
                 repository_context TEXT,
                 created_at TEXT NOT NULL,
                 metadata TEXT DEFAULT '{}',
-                
+
                 FOREIGN KEY (conversation_id) REFERENCES conversations (id) ON DELETE CASCADE,
                 FOREIGN KEY (participant_id) REFERENCES conversation_participants (id) ON DELETE CASCADE
             )
@@ -870,7 +873,9 @@ class DatabaseManager:
         """Get all conversations involving a specific repository."""
         return self.list_conversations(repository=repository)
 
-    def get_stories_by_github_issue(self, repository_name: str, issue_number: int) -> List[Union[Epic, UserStory, SubStory]]:
+    def get_stories_by_github_issue(
+        self, repository_name: str, issue_number: int
+    ) -> List[Union[Epic, UserStory, SubStory]]:
         """Get stories linked to a specific GitHub issue."""
         with self.get_connection() as conn:
             cursor = conn.execute(
@@ -881,7 +886,7 @@ class DatabaseManager:
                 """,
                 (repository_name, issue_number),
             )
-            
+
             return [self._row_to_story(row) for row in cursor.fetchall()]
 
     def log_status_transition(
@@ -897,7 +902,7 @@ class DatabaseManager:
         issue_number: Optional[int] = None,
         commit_sha: Optional[str] = None,
         user_id: Optional[str] = None,
-        metadata: Optional[Dict[str, Any]] = None
+        metadata: Optional[Dict[str, Any]] = None,
     ) -> bool:
         """Log a status transition to the audit trail."""
         with self.get_connection() as conn:
@@ -923,46 +928,50 @@ class DatabaseManager:
                         commit_sha,
                         user_id,
                         datetime.now(timezone.utc).isoformat(),
-                        json.dumps(metadata or {})
-                    )
+                        json.dumps(metadata or {}),
+                    ),
                 )
                 return True
             except Exception as e:
                 logger.error(f"Failed to log status transition: {e}")
                 return False
 
-    def get_status_transitions(self, story_id: Optional[str] = None, limit: int = 100) -> List[Dict[str, Any]]:
+    def get_status_transitions(
+        self, story_id: Optional[str] = None, limit: int = 100
+    ) -> List[Dict[str, Any]]:
         """Get status transition history."""
         with self.get_connection() as conn:
             if story_id:
                 cursor = conn.execute(
                     """
-                    SELECT * FROM status_transitions 
-                    WHERE story_id = ? 
-                    ORDER BY timestamp DESC 
+                    SELECT * FROM status_transitions
+                    WHERE story_id = ?
+                    ORDER BY timestamp DESC
                     LIMIT ?
                     """,
-                    (story_id, limit)
+                    (story_id, limit),
                 )
             else:
                 cursor = conn.execute(
                     """
-                    SELECT * FROM status_transitions 
-                    ORDER BY timestamp DESC 
+                    SELECT * FROM status_transitions
+                    ORDER BY timestamp DESC
                     LIMIT ?
                     """,
-                    (limit,)
+                    (limit,),
                 )
-            
+
             transitions = []
             for row in cursor.fetchall():
                 transition = dict(row)
-                transition['metadata'] = json.loads(transition['metadata'] or '{}')
+                transition["metadata"] = json.loads(transition["metadata"] or "{}")
                 transitions.append(transition)
-            
+
             return transitions
 
-    def create_github_issue_link(self, story_id: str, repository_name: str, issue_number: int, issue_url: str) -> bool:
+    def create_github_issue_link(
+        self, story_id: str, repository_name: str, issue_number: int, issue_url: str
+    ) -> bool:
         """Create a link between a story and a GitHub issue."""
         with self.get_connection() as conn:
             try:
@@ -974,11 +983,11 @@ class DatabaseManager:
                     """,
                     (
                         story_id,
-                        repository_name, 
+                        repository_name,
                         issue_number,
                         issue_url,
-                        datetime.now(timezone.utc).isoformat()
-                    )
+                        datetime.now(timezone.utc).isoformat(),
+                    ),
                 )
                 return True
             except Exception as e:

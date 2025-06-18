@@ -32,7 +32,7 @@ class StoryWorkflowConfig:
 @dataclass
 class WebhookConfig:
     """Configuration for webhook-based status transitions."""
-    
+
     enabled: bool = True
     secret: Optional[str] = None
     status_mappings: Dict[str, str] = field(default_factory=dict)
@@ -138,13 +138,13 @@ def load_config() -> Config:
                 create_subtickets=workflow_data.get("create_subtickets", True),
                 respect_dependencies=workflow_data.get("respect_dependencies", True),
             )
-            
+
             # Parse webhook config
             webhook_data = config_data.get("webhook_config", {})
             config.webhook_config = WebhookConfig(
                 enabled=webhook_data.get("enabled", True),
                 secret=webhook_data.get("secret"),
-                status_mappings=webhook_data.get("status_mappings", {})
+                status_mappings=webhook_data.get("status_mappings", {}),
             )
 
         except (json.JSONDecodeError, KeyError) as e:

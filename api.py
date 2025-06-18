@@ -423,60 +423,64 @@ async def breakdown_epic(epic_id: str, request: EpicBreakdownRequest):
 
 # Webhook endpoints for automatic status transitions
 
+
 @app.post("/webhooks/github")
 async def github_webhook(request: Request):
     """Handle GitHub webhook events for automatic status transitions."""
-    from webhook_handler import WebhookHandler
     from config import get_config
-    
+    from webhook_handler import WebhookHandler
+
     try:
         # Get raw payload
         payload_body = await request.body()
-        
+
         # Get signature header for verification
-        signature = request.headers.get('X-Hub-Signature-256')
-        
+        signature = request.headers.get("X-Hub-Signature-256")
+
         # Parse JSON payload
         payload = await request.json()
-        
+
         # Initialize webhook handler
         config = get_config()
         webhook_handler = WebhookHandler(config)
-        
+
         # Verify signature if configured
-        if hasattr(config, 'webhook_secret') and config.webhook_secret:
+        if hasattr(config, "webhook_secret") and config.webhook_secret:
             if not webhook_handler.verify_signature(payload_body, signature):
                 raise HTTPException(status_code=401, detail="Invalid webhook signature")
-        
+
         # Process the webhook
         result = await webhook_handler.handle_webhook(payload, signature)
-        
+
         return result
-        
+
     except Exception as e:
         logger.error(f"Webhook processing error: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Webhook processing failed: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail=f"Webhook processing failed: {str(e)}"
+        )
 
 
 @app.get("/webhooks/status")
 async def webhook_status():
     """Get webhook configuration status."""
     from config import get_config
-    
+
     config = get_config()
-    
+
     return {
         "webhook_enabled": True,
-        "signature_verification": hasattr(config, 'webhook_secret') and bool(config.webhook_secret),
+        "signature_verification": hasattr(config, "webhook_secret")
+        and bool(config.webhook_secret),
         "supported_events": [
             "pull_request.opened",
-            "pull_request.ready_for_review", 
+            "pull_request.ready_for_review",
             "pull_request.closed",
             "issues.opened",
             "issues.closed",
             "issues.reopened",
-            "push"
-        ]
+            "push",
+        ],
     }
 
 
@@ -485,18 +489,20 @@ async def get_story_transitions(story_id: str, limit: int = Query(50, ge=1, le=5
     """Get status transition history for a specific story."""
     try:
         from database import DatabaseManager
-        
+
         db = DatabaseManager()
         transitions = db.get_status_transitions(story_id=story_id, limit=limit)
-        
+
         return {
             "story_id": story_id,
             "transitions": transitions,
-            "total": len(transitions)
+            "total": len(transitions),
         }
-        
+
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to get transitions: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to get transitions: {str(e)}"
+        )
 
 
 @app.get("/transitions")
@@ -504,14 +510,13 @@ async def get_all_transitions(limit: int = Query(100, ge=1, le=1000)):
     """Get recent status transitions across all stories."""
     try:
         from database import DatabaseManager
-        
+
         db = DatabaseManager()
         transitions = db.get_status_transitions(limit=limit)
-        
-        return {
-            "transitions": transitions,
-            "total": len(transitions)
-        }
-        
+
+        return {"transitions": transitions, "total": len(transitions)}
+
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to get transitions: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to get transitions: {str(e)}"
+        )

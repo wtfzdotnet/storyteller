@@ -286,7 +286,9 @@ class TestRoleAssignmentEngine(unittest.TestCase):
 
         # Test with a role that shouldn't exist
         self.assertFalse(self.engine.validate_role_exists("nonexistent-role"))
-        self.assertFalse(self.engine.validate_role_exists("ai-expert"))  # This role doesn't exist
+        self.assertFalse(
+            self.engine.validate_role_exists("ai-expert")
+        )  # This role doesn't exist
 
     def test_get_available_roles(self):
         """Test getting list of available roles."""

@@ -279,12 +279,14 @@ class TestRoleAssignmentEngine(unittest.TestCase):
 
     def test_validate_role_exists(self):
         """Test role validation functionality."""
-        # This test depends on actual role files existing
-        # Test with a role that should exist
-        self.assertTrue(self.engine.validate_role_exists("ai-expert"))
+        # Test with roles that actually exist
+        self.assertTrue(self.engine.validate_role_exists("system-architect"))
+        self.assertTrue(self.engine.validate_role_exists("lead-developer"))
+        self.assertTrue(self.engine.validate_role_exists("qa-engineer"))
 
         # Test with a role that shouldn't exist
         self.assertFalse(self.engine.validate_role_exists("nonexistent-role"))
+        self.assertFalse(self.engine.validate_role_exists("ai-expert"))  # This role doesn't exist
 
     def test_get_available_roles(self):
         """Test getting list of available roles."""

@@ -1,13 +1,8 @@
 """Tests for hierarchical story management system."""
 
-# isort: skip_file
-
 import tempfile
 import unittest
 from pathlib import Path
-
-# Setup paths for imports
-import setup_path
 
 from database import DatabaseManager
 from models import (
@@ -443,7 +438,3 @@ class TestDatabaseIntegration(unittest.TestCase):
 
         us2_progress = hierarchy.get_user_story_progress(user_story_2.id)
         self.assertEqual(us2_progress["percentage"], 0.0)  # Sub-story in progress
-
-
-if __name__ == "__main__":
-    unittest.main(verbosity=2)

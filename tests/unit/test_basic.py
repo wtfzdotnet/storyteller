@@ -1,14 +1,5 @@
 """Basic unit tests to ensure core functionality works."""
 
-import os
-
-# Setup paths for imports
-import setup_path  # This will configure sys.path
-
-# Set dummy environment for testing
-os.environ["GITHUB_TOKEN"] = "test_token"
-os.environ["DEFAULT_LLM_PROVIDER"] = "github"
-
 
 def test_imports():
     """Test that core modules can be imported without errors."""
@@ -40,8 +31,6 @@ def test_imports():
         webhook_handler = WebhookHandler(config)
         assert webhook_handler is not None
 
-        print("✓ All core imports and basic instantiation work")
-
     except Exception as e:
         raise AssertionError(f"Import test failed: {e}")
 
@@ -60,8 +49,6 @@ def test_conversation_participant_basic():
     assert participant.repository == "backend"
     assert participant.id is not None
     assert len(participant.id) > 0
-
-    print("✓ ConversationParticipant basic functionality works")
 
 
 def test_message_basic():
@@ -83,8 +70,6 @@ def test_message_basic():
     assert message.message_type == "text"
     assert message.id is not None
 
-    print("✓ Message basic functionality works")
-
 
 def test_repository_type_detection_basic():
     """Test basic repository type detection."""
@@ -101,8 +86,6 @@ def test_repository_type_detection_basic():
     backend_files = ["requirements.txt", "app.py", "src/models/user.py"]
     result = detector.detect_repository_type({}, backend_files)
     assert result == "backend"
-
-    print("✓ Repository type detection basic functionality works")
 
 
 def test_file_selector_basic():
@@ -125,8 +108,6 @@ def test_file_selector_basic():
     assert "node_modules/react/index.js" not in selected
     assert len(selected) <= 2
 
-    print("✓ File selector basic functionality works")
-
 
 def test_cache_basic():
     """Test basic cache functionality."""
@@ -145,20 +126,3 @@ def test_cache_basic():
     assert cache.get("key1") is None
     assert cache.get("key2") == "value2"
     assert cache.get("key3") == "value3"
-
-    print("✓ Cache basic functionality works")
-
-
-if __name__ == "__main__":
-    print("Running basic unit tests...")
-    print("=" * 50)
-
-    test_imports()
-    test_conversation_participant_basic()
-    test_message_basic()
-    test_repository_type_detection_basic()
-    test_file_selector_basic()
-    test_cache_basic()
-
-    print("=" * 50)
-    print("✓ All basic unit tests passed!")

@@ -378,12 +378,27 @@ class WebhookHandler:
     ) -> Optional[Dict[str, Any]]:
         """Handle pipeline failures and trigger agent notifications if needed."""
         try:
+            # First, attempt retries for failures that are eligible
+            retry_results = []
+            for failure in pipeline_run.failures:
+                if failure.retry_count < self.pipeline_monitor.config.pipeline_retry_config.max_retries:
+                    # Attempt retry for this failure
+                    retry_attempt = await self.pipeline_monitor.retry_failed_pipeline(failure)
+                    if retry_attempt:
+                        retry_results.append(retry_attempt)
+
             # Check if we should notify the agent based on failure patterns
             should_notify = self._should_notify_agent(pipeline_run)
 
-            if should_notify:
+            # Check for escalation needs
+            escalation = self.pipeline_monitor.check_for_escalation(repo_name)
+            escalation_triggered = escalation is not None
+
+            if should_notify or escalation_triggered:
                 # Create notification comment for the agent
-                notification = self._create_failure_notification(pipeline_run)
+                notification = self._create_failure_notification(
+                    pipeline_run, retry_results, escalation
+                )
 
                 # Try to find related issues to comment on
                 related_issues = await self._find_related_issues(
@@ -411,9 +426,18 @@ class WebhookHandler:
                     "notification_sent": True,
                     "issues_notified": related_issues,
                     "failure_count": len(pipeline_run.failures),
+                    "retry_attempts": len(retry_results),
+                    "successful_retries": len([r for r in retry_results if r.success]),
+                    "escalation_triggered": escalation_triggered,
+                    "escalation_id": escalation.id if escalation else None,
                 }
 
-            return None
+            return {
+                "notification_sent": False,
+                "retry_attempts": len(retry_results),
+                "successful_retries": len([r for r in retry_results if r.success]),
+                "escalation_triggered": False,
+            }
 
         except Exception as e:
             logger.error(f"Failed to handle pipeline failures: {e}")
@@ -438,7 +462,7 @@ class WebhookHandler:
 
         return len(repeated_failures) > 0
 
-    def _create_failure_notification(self, pipeline_run) -> str:
+    def _create_failure_notification(self, pipeline_run, retry_results=None, escalation=None) -> str:
         """Create a notification message for pipeline failures."""
         failure_summary = {}
         for failure in pipeline_run.failures:
@@ -462,6 +486,28 @@ class WebhookHandler:
             for msg in messages:
                 notification += f"- {msg}\n"
 
+        # Add retry information if available
+        if retry_results:
+            successful_retries = len([r for r in retry_results if r.success])
+            total_retries = len(retry_results)
+            
+            notification += f"""
+### Retry Status:
+- **Retry attempts:** {total_retries}
+- **Successful retries:** {successful_retries}
+- **Failed retries:** {total_retries - successful_retries}
+"""
+
+        # Add escalation information if available
+        if escalation:
+            notification += f"""
+### 🚨 Escalation Alert:
+- **Pattern:** {escalation.failure_pattern}
+- **Failure count:** {escalation.failure_count}
+- **Escalation level:** {escalation.escalation_level.upper()}
+- **This pattern has exceeded the threshold and requires immediate attention**
+"""
+
         notification += f"""
 ### Recommended Actions:
 """
@@ -477,11 +523,18 @@ class WebhookHandler:
                     notification += f"- {suggestion}\n"
 
         notification += f"""
-Failure Count: {len(pipeline_run.failures)}
-Time: {pipeline_run.started_at.strftime('%Y-%m-%d %H:%M:%S UTC')}
-
-@copilot Please investigate and resolve these pipeline failures.
+**Failure Count:** {len(pipeline_run.failures)}
+**Time:** {pipeline_run.started_at.strftime('%Y-%m-%d %H:%M:%S UTC')}
 """
+
+        if escalation:
+            notification += f"""
+⚠️ **ESCALATED ISSUE** - Pattern has been escalated due to persistent failures.
+**Escalation ID:** {escalation.id}
+
+"""
+
+        notification += "\n@copilot Please investigate and resolve these pipeline failures."
 
         return notification
 

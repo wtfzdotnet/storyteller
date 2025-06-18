@@ -8,6 +8,8 @@ from typing import Any, Dict, List, Optional
 from assignment_engine import AssignmentEngine
 from automation.label_manager import LabelManager
 from config import Config, get_config
+from pipeline_dashboard import PipelineDashboard
+from pipeline_monitor import PipelineMonitor
 from story_manager import StoryManager
 
 logger = logging.getLogger(__name__)
@@ -31,6 +33,8 @@ class WorkflowProcessor:
         self.story_manager = StoryManager(self.config)
         self.label_manager = LabelManager(self.config)
         self.assignment_engine = AssignmentEngine(self.config)
+        self.pipeline_monitor = PipelineMonitor(self.config)
+        self.pipeline_dashboard = PipelineDashboard(self.config)
 
     async def create_story_workflow(
         self,
@@ -500,5 +504,134 @@ class WorkflowProcessor:
             return WorkflowResult(
                 success=False,
                 message="Failed to get assignment statistics",
+                error=str(e),
+            )
+
+    # Pipeline monitoring methods
+
+    def get_pipeline_dashboard_workflow(
+        self, repository: Optional[str] = None, time_range: str = "24h"
+    ) -> WorkflowResult:
+        """Get pipeline monitoring dashboard data."""
+        try:
+            dashboard_data = self.pipeline_dashboard.get_dashboard_data(
+                repository=repository, time_range=time_range
+            )
+
+            if "error" in dashboard_data:
+                return WorkflowResult(
+                    success=False,
+                    message="Failed to get dashboard data",
+                    error=dashboard_data["error"],
+                )
+
+            return WorkflowResult(
+                success=True,
+                message=f"Pipeline dashboard data retrieved for {time_range}",
+                data=dashboard_data,
+            )
+
+        except Exception as e:
+            logger.error(f"Failed to get pipeline dashboard: {e}")
+            return WorkflowResult(
+                success=False,
+                message="Failed to get pipeline dashboard",
+                error=str(e),
+            )
+
+    def get_pipeline_health_workflow(self, repository: Optional[str] = None) -> WorkflowResult:
+        """Get pipeline health status."""
+        try:
+            live_status = self.pipeline_dashboard.get_live_status()
+            dashboard_data = self.pipeline_dashboard.get_dashboard_data(
+                repository=repository, time_range="24h"
+            )
+
+            health_summary = {
+                "live_status": live_status,
+                "health_metrics": dashboard_data.get("health_metrics", {}),
+                "alert_summary": dashboard_data.get("alert_summary", {}),
+                "recommendations": dashboard_data.get("recommendations", [])[:3],  # Top 3
+            }
+
+            return WorkflowResult(
+                success=True,
+                message="Pipeline health status retrieved",
+                data=health_summary,
+            )
+
+        except Exception as e:
+            logger.error(f"Failed to get pipeline health: {e}")
+            return WorkflowResult(
+                success=False,
+                message="Failed to get pipeline health",
+                error=str(e),
+            )
+
+    def analyze_pipeline_patterns_workflow(self, days: int = 30) -> WorkflowResult:
+        """Analyze pipeline failure patterns."""
+        try:
+            patterns = self.pipeline_monitor.analyze_failure_patterns(days=days)
+
+            pattern_data = [
+                {
+                    "pattern_id": p.pattern_id,
+                    "category": p.category.value,
+                    "description": p.description,
+                    "failure_count": p.failure_count,
+                    "repositories": p.repositories,
+                    "resolution_suggestions": p.resolution_suggestions,
+                }
+                for p in patterns
+            ]
+
+            return WorkflowResult(
+                success=True,
+                message=f"Analyzed {len(patterns)} failure patterns over {days} days",
+                data={
+                    "patterns": pattern_data,
+                    "analysis_period_days": days,
+                    "total_patterns": len(patterns),
+                },
+            )
+
+        except Exception as e:
+            logger.error(f"Failed to analyze pipeline patterns: {e}")
+            return WorkflowResult(
+                success=False,
+                message="Failed to analyze pipeline patterns",
+                error=str(e),
+            )
+
+    def export_pipeline_data_workflow(
+        self,
+        repository: Optional[str] = None,
+        time_range: str = "7d",
+        format: str = "json",
+    ) -> WorkflowResult:
+        """Export pipeline monitoring data."""
+        try:
+            export_data = self.pipeline_dashboard.export_dashboard_data(
+                repository=repository, time_range=time_range, format=format
+            )
+
+            if "error" in export_data:
+                return WorkflowResult(
+                    success=False,
+                    message="Failed to export pipeline data",
+                    error=export_data["error"],
+                )
+
+            return WorkflowResult(
+                success=True,
+                message=f"Pipeline data exported for {time_range}",
+                data=export_data,
+            )
+
+        except Exception as e:
+            logger.error(f"Failed to export pipeline data: {e}")
+            return WorkflowResult(
+                success=False,
+                message="Failed to export pipeline data",
                 error=str(e),
             )

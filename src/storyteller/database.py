@@ -1413,6 +1413,43 @@ class DatabaseManager:
                 
             return patterns
 
+    def get_recent_pipeline_runs(self, repository: Optional[str] = None, days: int = 7) -> List:
+        """Get recent pipeline runs from the database."""
+        from models import PipelineRun, PipelineStatus
+        
+        with self.get_connection() as conn:
+            query = """
+                SELECT * FROM pipeline_runs 
+                WHERE started_at >= datetime('now', '-{} days')
+            """.format(days)
+            params = []
+            
+            if repository:
+                query += " AND repository = ?"
+                params.append(repository)
+                
+            query += " ORDER BY started_at DESC"
+            
+            cursor = conn.execute(query, params)
+            runs = []
+            
+            for row in cursor.fetchall():
+                row_dict = dict(row)
+                run = PipelineRun(
+                    id=row_dict["id"],
+                    repository=row_dict["repository"],
+                    branch=row_dict["branch"],
+                    commit_sha=row_dict["commit_sha"],
+                    workflow_name=row_dict["workflow_name"],
+                    status=PipelineStatus(row_dict["status"]),
+                    started_at=datetime.fromisoformat(row_dict["started_at"]),
+                    completed_at=datetime.fromisoformat(row_dict["completed_at"]) if row_dict["completed_at"] else None,
+                    metadata=json.loads(row_dict["metadata"]),
+                )
+                runs.append(run)
+                
+            return runs
+
 
 def run_migrations(db_path: str = "storyteller.db"):
     """Run database migrations to set up the schema."""

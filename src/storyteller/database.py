@@ -1301,7 +1301,6 @@ class DatabaseManager:
                 logger.error(f"Failed to create GitHub issue link: {e}")
                 return False
 
-
     # Pipeline monitoring methods
 
     def store_pipeline_run(self, pipeline_run) -> bool:
@@ -1311,7 +1310,7 @@ class DatabaseManager:
                 data = pipeline_run.to_dict()
                 columns = ", ".join(data.keys())
                 placeholders = ", ".join(["?" for _ in data])
-                
+
                 conn.execute(
                     f"INSERT OR REPLACE INTO pipeline_runs ({columns}) VALUES ({placeholders})",
                     list(data.values()),
@@ -1328,7 +1327,7 @@ class DatabaseManager:
                 data = failure.to_dict()
                 columns = ", ".join(data.keys())
                 placeholders = ", ".join(["?" for _ in data])
-                
+
                 conn.execute(
                     f"INSERT OR REPLACE INTO pipeline_failures ({columns}) VALUES ({placeholders})",
                     list(data.values()),
@@ -1345,7 +1344,7 @@ class DatabaseManager:
                 data = pattern.to_dict()
                 columns = ", ".join(data.keys())
                 placeholders = ", ".join(["?" for _ in data])
-                
+
                 conn.execute(
                     f"INSERT OR REPLACE INTO failure_patterns ({columns}) VALUES ({placeholders})",
                     list(data.values()),
@@ -1355,47 +1354,54 @@ class DatabaseManager:
                 logger.error(f"Failed to store failure pattern: {e}")
                 return False
 
-    def get_recent_pipeline_failures(self, repository: Optional[str] = None, days: int = 7) -> List:
+    def get_recent_pipeline_failures(
+        self, repository: Optional[str] = None, days: int = 7
+    ) -> List:
         """Get recent pipeline failures from the database."""
-        from models import PipelineFailure, FailureCategory, FailureSeverity
-        
+        from models import FailureCategory, FailureSeverity, PipelineFailure
+
         with self.get_connection() as conn:
             query = """
                 SELECT * FROM pipeline_failures 
                 WHERE detected_at >= datetime('now', '-{} days')
-            """.format(days)
+            """.format(
+                days
+            )
             params = []
-            
+
             if repository:
                 query += " AND repository = ?"
                 params.append(repository)
-                
+
             query += " ORDER BY detected_at DESC"
-            
+
             cursor = conn.execute(query, params)
             failures = []
-            
+
             for row in cursor.fetchall():
                 failure = PipelineFailure.from_dict(dict(row))
                 failures.append(failure)
-                
+
             return failures
 
     def get_failure_patterns(self, days: int = 30) -> List:
         """Get failure patterns from the database."""
-        from models import FailurePattern, FailureCategory
         import json
-        
+
+        from models import FailureCategory, FailurePattern
+
         with self.get_connection() as conn:
             query = """
                 SELECT * FROM failure_patterns 
                 WHERE last_seen >= datetime('now', '-{} days')
                 ORDER BY failure_count DESC
-            """.format(days)
-            
+            """.format(
+                days
+            )
+
             cursor = conn.execute(query)
             patterns = []
-            
+
             for row in cursor.fetchall():
                 row_dict = dict(row)
                 pattern = FailurePattern(
@@ -1406,33 +1412,39 @@ class DatabaseManager:
                     repositories=json.loads(row_dict["repositories"]),
                     first_seen=datetime.fromisoformat(row_dict["first_seen"]),
                     last_seen=datetime.fromisoformat(row_dict["last_seen"]),
-                    resolution_suggestions=json.loads(row_dict["resolution_suggestions"]),
+                    resolution_suggestions=json.loads(
+                        row_dict["resolution_suggestions"]
+                    ),
                     metadata=json.loads(row_dict["metadata"]),
                 )
                 patterns.append(pattern)
-                
+
             return patterns
 
-    def get_recent_pipeline_runs(self, repository: Optional[str] = None, days: int = 7) -> List:
+    def get_recent_pipeline_runs(
+        self, repository: Optional[str] = None, days: int = 7
+    ) -> List:
         """Get recent pipeline runs from the database."""
         from models import PipelineRun, PipelineStatus
-        
+
         with self.get_connection() as conn:
             query = """
                 SELECT * FROM pipeline_runs 
                 WHERE started_at >= datetime('now', '-{} days')
-            """.format(days)
+            """.format(
+                days
+            )
             params = []
-            
+
             if repository:
                 query += " AND repository = ?"
                 params.append(repository)
-                
+
             query += " ORDER BY started_at DESC"
-            
+
             cursor = conn.execute(query, params)
             runs = []
-            
+
             for row in cursor.fetchall():
                 row_dict = dict(row)
                 run = PipelineRun(
@@ -1443,11 +1455,15 @@ class DatabaseManager:
                     workflow_name=row_dict["workflow_name"],
                     status=PipelineStatus(row_dict["status"]),
                     started_at=datetime.fromisoformat(row_dict["started_at"]),
-                    completed_at=datetime.fromisoformat(row_dict["completed_at"]) if row_dict["completed_at"] else None,
+                    completed_at=(
+                        datetime.fromisoformat(row_dict["completed_at"])
+                        if row_dict["completed_at"]
+                        else None
+                    ),
                     metadata=json.loads(row_dict["metadata"]),
                 )
                 runs.append(run)
-                
+
             return runs
 
 

@@ -719,7 +719,11 @@ class PipelineFailure:
             category=FailureCategory(data["category"]),
             severity=FailureSeverity(data["severity"]),
             detected_at=datetime.fromisoformat(data["detected_at"]),
-            resolved_at=datetime.fromisoformat(data["resolved_at"]) if data["resolved_at"] else None,
+            resolved_at=(
+                datetime.fromisoformat(data["resolved_at"])
+                if data["resolved_at"]
+                else None
+            ),
             retry_count=data["retry_count"],
             max_retries=data["max_retries"],
             metadata=json.loads(data["metadata"]) if data["metadata"] else {},
@@ -751,7 +755,9 @@ class PipelineRun:
             "workflow_name": self.workflow_name,
             "status": self.status.value,
             "started_at": self.started_at.isoformat(),
-            "completed_at": self.completed_at.isoformat() if self.completed_at else None,
+            "completed_at": (
+                self.completed_at.isoformat() if self.completed_at else None
+            ),
             "metadata": json.dumps(self.metadata),
         }
 

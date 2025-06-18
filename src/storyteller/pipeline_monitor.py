@@ -211,19 +211,19 @@ class PipelineMonitor:
         try:
             # Use GitHub API to get workflow jobs
             repo = self.github_handler.get_repository(repository)
-            
+
             # Note: PyGithub doesn't have direct workflow jobs access
             # We'll use the raw GitHub API here
             import requests
-            
+
             headers = {
                 "Authorization": f"token {self.config.github_token}",
                 "Accept": "application/vnd.github.v3+json",
             }
-            
+
             url = f"https://api.github.com/repos/{repository}/actions/runs/{workflow_run_id}/jobs"
             response = requests.get(url, headers=headers, timeout=30)
-            
+
             if response.status_code == 200:
                 return response.json().get("jobs", [])
             else:
@@ -274,15 +274,17 @@ class PipelineMonitor:
         """Get logs for a specific job."""
         try:
             import requests
-            
+
             headers = {
                 "Authorization": f"token {self.config.github_token}",
                 "Accept": "application/vnd.github.v3+json",
             }
-            
-            url = f"https://api.github.com/repos/{repository}/actions/jobs/{job_id}/logs"
+
+            url = (
+                f"https://api.github.com/repos/{repository}/actions/jobs/{job_id}/logs"
+            )
             response = requests.get(url, headers=headers, timeout=30)
-            
+
             if response.status_code == 200:
                 return response.text
             else:
@@ -367,7 +369,9 @@ class PipelineMonitor:
             for failure in pipeline_run.failures:
                 self.database.store_pipeline_failure(failure)
 
-            logger.debug(f"Stored pipeline run {pipeline_run.id} with {len(pipeline_run.failures)} failures")
+            logger.debug(
+                f"Stored pipeline run {pipeline_run.id} with {len(pipeline_run.failures)} failures"
+            )
 
         except Exception as e:
             logger.error(f"Failed to store pipeline run: {e}")
@@ -480,7 +484,9 @@ class PipelineMonitor:
             for pattern in patterns:
                 self.database.store_failure_pattern(pattern)
 
-            logger.info(f"Analyzed {len(patterns)} failure patterns from {len(failures)} failures")
+            logger.info(
+                f"Analyzed {len(patterns)} failure patterns from {len(failures)} failures"
+            )
             return patterns
 
         except Exception as e:
@@ -490,10 +496,26 @@ class PipelineMonitor:
     def _extract_key_words(self, message: str) -> str:
         """Extract key words from failure message for pattern matching."""
         # Remove common words and extract meaningful terms
-        words = re.findall(r'\b\w+\b', message.lower())
-        key_words = [w for w in words if len(w) > 3 and w not in {
-            "error", "failed", "failure", "test", "build", "the", "and", "with", "for"
-        }]
+        words = re.findall(r"\b\w+\b", message.lower())
+        key_words = [
+            w
+            for w in words
+            if len(w) > 3
+            and w
+            not in {
+                "error",
+                "failed",
+                "failure",
+                "test",
+                "build",
+                "the",
+                "and",
+                "with",
+                "for",
+                "problem",  # Add problem to common words to exclude
+                "issue",  # Add issue to common words to exclude
+            }
+        ]
         return "_".join(sorted(set(key_words))[:3])  # Top 3 unique key words
 
     def _generate_pattern_description(self, failures: List[PipelineFailure]) -> str:

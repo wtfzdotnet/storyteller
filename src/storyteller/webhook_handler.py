@@ -346,9 +346,12 @@ class WebhookHandler:
         try:
             # Process the pipeline event using the pipeline monitor
             pipeline_run = await self.pipeline_monitor.process_pipeline_event(payload)
-            
+
             if not pipeline_run:
-                return {"status": "ignored", "reason": "failed to process pipeline event"}
+                return {
+                    "status": "ignored",
+                    "reason": "failed to process pipeline event",
+                }
 
             # If there are failures, check if we need to trigger agent notification
             notification_result = None
@@ -377,14 +380,16 @@ class WebhookHandler:
         try:
             # Check if we should notify the agent based on failure patterns
             should_notify = self._should_notify_agent(pipeline_run)
-            
+
             if should_notify:
                 # Create notification comment for the agent
                 notification = self._create_failure_notification(pipeline_run)
-                
+
                 # Try to find related issues to comment on
-                related_issues = await self._find_related_issues(pipeline_run, repo_name)
-                
+                related_issues = await self._find_related_issues(
+                    pipeline_run, repo_name
+                )
+
                 if related_issues:
                     for issue_number in related_issues:
                         try:
@@ -392,20 +397,24 @@ class WebhookHandler:
                             await self.pipeline_monitor.github_handler.add_issue_comment(
                                 repository_name=repo_name,
                                 issue_number=issue_number,
-                                comment=notification
+                                comment=notification,
                             )
-                            logger.info(f"Added pipeline failure notification to issue #{issue_number}")
+                            logger.info(
+                                f"Added pipeline failure notification to issue #{issue_number}"
+                            )
                         except Exception as e:
-                            logger.error(f"Failed to add comment to issue #{issue_number}: {e}")
-                
+                            logger.error(
+                                f"Failed to add comment to issue #{issue_number}: {e}"
+                            )
+
                 return {
                     "notification_sent": True,
                     "issues_notified": related_issues,
-                    "failure_count": len(pipeline_run.failures)
+                    "failure_count": len(pipeline_run.failures),
                 }
-            
+
             return None
-            
+
         except Exception as e:
             logger.error(f"Failed to handle pipeline failures: {e}")
             return None
@@ -415,22 +424,18 @@ class WebhookHandler:
         # Basic rules for notification
         if not pipeline_run.failures:
             return False
-            
+
         # Check if any failures are high or critical severity
         high_severity_failures = [
-            f for f in pipeline_run.failures 
-            if f.severity.value in ["high", "critical"]
+            f for f in pipeline_run.failures if f.severity.value in ["high", "critical"]
         ]
-        
+
         if high_severity_failures:
             return True
-            
+
         # Check retry count - notify if we've tried multiple times
-        repeated_failures = [
-            f for f in pipeline_run.failures 
-            if f.retry_count >= 2
-        ]
-        
+        repeated_failures = [f for f in pipeline_run.failures if f.retry_count >= 2]
+
         return len(repeated_failures) > 0
 
     def _create_failure_notification(self, pipeline_run) -> str:
@@ -441,7 +446,7 @@ class WebhookHandler:
             if category not in failure_summary:
                 failure_summary[category] = []
             failure_summary[category].append(failure.failure_message[:100])
-        
+
         notification = f"""## 🚨 Pipeline Failure Detected
 
 **Repository:** {pipeline_run.repository}
@@ -451,50 +456,50 @@ class WebhookHandler:
 
 ### Failure Summary:
 """
-        
+
         for category, messages in failure_summary.items():
             notification += f"\n**{category.title()} Issues:**\n"
             for msg in messages:
                 notification += f"- {msg}\n"
-        
+
         notification += f"""
 ### Recommended Actions:
 """
-        
+
         # Add category-specific suggestions
         for failure in pipeline_run.failures:
-            suggestions = self.pipeline_monitor._generate_resolution_suggestions(failure.category)
+            suggestions = self.pipeline_monitor._generate_resolution_suggestions(
+                failure.category
+            )
             if suggestions:
                 notification += f"\n**For {failure.category.value} issues:**\n"
                 for suggestion in suggestions[:2]:  # Limit to top 2 suggestions
                     notification += f"- {suggestion}\n"
-        
+
         notification += f"""
-**Failure Count:** {len(pipeline_run.failures)}
-**Time:** {pipeline_run.started_at.strftime('%Y-%m-%d %H:%M:%S UTC')}
+Failure Count: {len(pipeline_run.failures)}
+Time: {pipeline_run.started_at.strftime('%Y-%m-%d %H:%M:%S UTC')}
 
 @copilot Please investigate and resolve these pipeline failures.
 """
-        
+
         return notification
 
     async def _find_related_issues(self, pipeline_run, repo_name: str) -> List[int]:
         """Find GitHub issues related to the failed pipeline."""
         try:
             # Look for open issues in the repository
-            issues = await self.pipeline_monitor.github_handler.list_issues(
-                repository_name=repo_name,
-                state="open",
-                limit=10
+            issues = self.pipeline_monitor.github_handler.list_issues(
+                repository_name=repo_name, state="open", limit=10
             )
-            
+
             # For now, just return the most recent issue if any
             # In the future, we could implement more sophisticated matching
             if issues:
                 return [issues[0].number]
-            
+
             return []
-            
+
         except Exception as e:
             logger.error(f"Failed to find related issues: {e}")
             return []

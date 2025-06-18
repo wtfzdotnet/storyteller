@@ -539,7 +539,9 @@ class WorkflowProcessor:
                 error=str(e),
             )
 
-    def get_pipeline_health_workflow(self, repository: Optional[str] = None) -> WorkflowResult:
+    def get_pipeline_health_workflow(
+        self, repository: Optional[str] = None
+    ) -> WorkflowResult:
         """Get pipeline health status."""
         try:
             live_status = self.pipeline_dashboard.get_live_status()
@@ -551,7 +553,9 @@ class WorkflowProcessor:
                 "live_status": live_status,
                 "health_metrics": dashboard_data.get("health_metrics", {}),
                 "alert_summary": dashboard_data.get("alert_summary", {}),
-                "recommendations": dashboard_data.get("recommendations", [])[:3],  # Top 3
+                "recommendations": dashboard_data.get("recommendations", [])[
+                    :3
+                ],  # Top 3
             }
 
             return WorkflowResult(

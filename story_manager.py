@@ -4,13 +4,13 @@ import asyncio
 import json
 import logging
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
-from typing import Any, Dict, List, Optional, Set
+from datetime import datetime
+from typing import Any, Dict, List, Optional
 
 from config import Config, get_config, load_role_files
 from database import DatabaseManager
-from github_handler import GitHubHandler, IssueData
-from llm_handler import LLMHandler, LLMResponse
+from github_handler import GitHubHandler
+from llm_handler import LLMHandler
 from models import Epic, StoryHierarchy, StoryStatus, SubStory, UserStory
 
 logger = logging.getLogger(__name__)
@@ -157,7 +157,7 @@ Respond with a JSON object containing:
             concerns = []
 
             lines = analysis_text.split("\n")
-            current_section = None
+            current_section = None  # noqa: F841
 
             for line in lines:
                 line = line.strip()
@@ -395,7 +395,8 @@ Respond with a JSON object containing:
 
         except Exception as e:
             logger.error(
-                f"Failed to create GitHub issues for story {processed_story.story_id}: {e}"
+                f"Failed to create GitHub issues for story "
+                f"{processed_story.story_id}: {e}"
             )
             raise
 
@@ -549,7 +550,8 @@ class StoryManager:
 
         self.database.save_story(user_story)
         logger.info(
-            f"Created user story: {user_story.title} (ID: {user_story.id}) under epic {epic_id}"
+            f"Created user story: {user_story.title} (ID: {user_story.id}) "
+            f"under epic {epic_id}"
         )
         return user_story
 
@@ -580,7 +582,8 @@ class StoryManager:
 
         self.database.save_story(sub_story)
         logger.info(
-            f"Created sub-story: {sub_story.title} (ID: {sub_story.id}) under user story {user_story_id}"
+            f"Created sub-story: {sub_story.title} (ID: {sub_story.id}) "
+            f"under user story {user_story_id}"
         )
         return sub_story
 
@@ -634,6 +637,135 @@ class StoryManager:
         for key, config in self.processor.config.repositories.items():
             repos[key] = config.description
         return repos
+
+    async def breakdown_epic_to_user_stories(
+        self,
+        epic_id: str,
+        max_user_stories: int = 5,
+        target_repositories: Optional[List[str]] = None,
+    ) -> List[UserStory]:
+        """Break down an epic into user stories using AI analysis."""
+
+        # Get the epic
+        epic = self.database.get_story(epic_id)
+        if not epic or not isinstance(epic, Epic):
+            raise ValueError(f"Epic not found: {epic_id}")
+
+        # Use LLM to analyze epic and generate user stories
+        breakdown_analysis = await self._analyze_epic_for_breakdown(
+            epic, max_user_stories, target_repositories
+        )
+
+        # Create user stories from the analysis
+        user_stories = []
+        for story_data in breakdown_analysis.get("user_stories", []):
+            user_story = self.create_user_story(
+                epic_id=epic_id,
+                title=story_data.get("title", ""),
+                description=story_data.get("description", ""),
+                user_persona=story_data.get("user_persona", ""),
+                user_goal=story_data.get("user_goal", ""),
+                acceptance_criteria=story_data.get("acceptance_criteria", []),
+                target_repositories=story_data.get("target_repositories", []),
+                story_points=story_data.get("story_points"),
+            )
+            user_stories.append(user_story)
+
+        logger.info(f"Created {len(user_stories)} user stories from epic {epic_id}")
+        return user_stories
+
+    async def _analyze_epic_for_breakdown(
+        self,
+        epic: Epic,
+        max_user_stories: int,
+        target_repositories: Optional[List[str]] = None,
+    ) -> Dict[str, Any]:
+        """Analyze an epic and generate user story breakdown using LLM."""
+
+        repo_list = target_repositories or list(
+            self.processor.config.repositories.keys()
+        )
+        system_prompt = (
+            f"You are a product owner breaking down an epic into user stories.\n\n"
+            f"Your task is to analyze the epic and create {max_user_stories} "
+            f"focused, actionable user stories.\n"
+            f"Each user story should follow the format: "
+            f'"As a [user_persona], I want [user_goal] so that [business_value]."\n\n'
+            f"Consider these target repositories: {repo_list}\n"
+            "Available repository types:\n"
+            "- backend: API services, data processing, business logic\n"
+            "- frontend: User interfaces, client applications\n"
+            "- storyteller: Story management and workflow tools\n\n"
+            "For each user story, determine:\n"
+            "1. User persona (who benefits from this feature)\n"
+            "2. User goal (what they want to accomplish)\n"
+            "3. Business value (why it matters)\n"
+            "4. Acceptance criteria (how we know it's done)\n"
+            "5. Target repositories (which codebases need changes)\n"
+            "6. Story points (complexity estimate 1-13)\n\n"
+            "Respond with a JSON object:\n"
+            "{\n"
+            '  "user_stories": [\n'
+            "    {\n"
+            '      "title": "Feature title",\n'
+            '      "description": "As a [persona], I want [goal] so that [value]",\n'
+            '      "user_persona": "specific user type",\n'
+            '      "user_goal": "what they want to do",\n'
+            '      "acceptance_criteria": ["criteria 1", "criteria 2", "criteria 3"],\n'
+            '      "target_repositories": ["backend", "frontend"],\n'
+            '      "story_points": 5,\n'
+            '      "rationale": "why this story is important"\n'
+            "    }\n"
+            "  ],\n"
+            '  "breakdown_rationale": "explanation of the breakdown approach"\n'
+            "}"
+        )
+
+        epic_content = f"""Epic: {epic.title}
+
+Description: {epic.description}
+
+Business Value: {epic.business_value}
+
+Acceptance Criteria:
+{chr(10).join(f"- {criteria}" for criteria in epic.acceptance_criteria)}
+
+Target Repositories: {epic.target_repositories}
+Estimated Duration: {epic.estimated_duration_weeks} weeks"""
+
+        try:
+            response = await self.processor.llm_handler.generate_response(
+                prompt=epic_content,
+                system_prompt=system_prompt,
+            )
+
+            # Parse JSON response
+            breakdown = json.loads(response.content)
+            return breakdown
+
+        except (json.JSONDecodeError, KeyError) as e:
+            logger.warning(f"Failed to parse epic breakdown, using fallback: {e}")
+            # Fallback: create a basic user story from the epic
+            return {
+                "user_stories": [
+                    {
+                        "title": f"Implement {epic.title}",
+                        "description": (
+                            f"As a user, I want {epic.title.lower()} "
+                            "so that I can achieve the epic's business value."
+                        ),
+                        "user_persona": "user",
+                        "user_goal": epic.title.lower(),
+                        "acceptance_criteria": epic.acceptance_criteria[:3],
+                        "target_repositories": (
+                            target_repositories or epic.target_repositories
+                        ),
+                        "story_points": 5,
+                        "rationale": "Fallback story due to parsing error",
+                    }
+                ],
+                "breakdown_rationale": "Fallback breakdown due to LLM parsing error",
+            }
 
     def get_story_status(self, story_id: str) -> Optional[Dict[str, Any]]:
         """Get status of a story by ID."""

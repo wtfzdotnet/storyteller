@@ -326,3 +326,93 @@ async def get_epic_hierarchy(epic_id: str):
         raise HTTPException(
             status_code=500, detail=f"Failed to get epic hierarchy: {str(e)}"
         )
+
+
+# Epic breakdown endpoints
+
+
+class EpicBreakdownRequest(BaseModel):
+    """Request model for breaking down an epic into user stories."""
+
+    max_user_stories: int = Field(
+        default=5, ge=1, le=20, description="Maximum number of user stories to create"
+    )
+    target_repositories: Optional[List[str]] = Field(
+        default=None, description="Target repositories for user stories"
+    )
+
+
+class UserStoryResponse(BaseModel):
+    """Response model for User Story data."""
+
+    id: str
+    epic_id: str
+    title: str
+    description: str
+    user_persona: str
+    user_goal: str
+    acceptance_criteria: List[str]
+    target_repositories: List[str]
+    story_points: Optional[int]
+    status: str
+    created_at: datetime
+    updated_at: datetime
+
+
+class EpicBreakdownResponse(BaseModel):
+    """Response model for epic breakdown operation."""
+
+    epic_id: str
+    user_stories_created: int
+    user_stories: List[UserStoryResponse]
+    breakdown_summary: str
+
+
+@app.post("/epics/{epic_id}/breakdown", response_model=EpicBreakdownResponse)
+async def breakdown_epic(epic_id: str, request: EpicBreakdownRequest):
+    """Break down an epic into user stories using AI analysis."""
+    try:
+        sm = get_story_manager()
+
+        # Perform the breakdown
+        user_stories = await sm.breakdown_epic_to_user_stories(
+            epic_id=epic_id,
+            max_user_stories=request.max_user_stories,
+            target_repositories=request.target_repositories,
+        )
+
+        # Convert to response format
+        user_story_responses = [
+            UserStoryResponse(
+                id=us.id,
+                epic_id=us.epic_id,
+                title=us.title,
+                description=us.description,
+                user_persona=us.user_persona,
+                user_goal=us.user_goal,
+                acceptance_criteria=us.acceptance_criteria,
+                target_repositories=us.target_repositories,
+                story_points=us.story_points,
+                status=us.status.value,
+                created_at=us.created_at,
+                updated_at=us.updated_at,
+            )
+            for us in user_stories
+        ]
+
+        return EpicBreakdownResponse(
+            epic_id=epic_id,
+            user_stories_created=len(user_stories),
+            user_stories=user_story_responses,
+            breakdown_summary=(
+                f"Successfully created {len(user_stories)} user stories "
+                f"from epic {epic_id}"
+            ),
+        )
+
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, detail=f"Failed to break down epic: {str(e)}"
+        )

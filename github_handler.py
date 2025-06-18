@@ -968,3 +968,58 @@ class GitHubHandler:
 
         logger.info(f"Created project for epic {epic.id}: {project['title']}")
         return project
+
+    async def notify_assignment(
+        self,
+        repository_name: str,
+        issue_number: int,
+        assignee: str,
+        assignment_reason: str,
+        additional_context: Optional[Dict[str, Any]] = None,
+    ) -> None:
+        """Add a notification comment when assigning a story to copilot-sve-agent."""
+
+        try:
+            # Create notification message
+            notification_parts = [
+                "🤖 **Automated Assignment**",
+                "",
+                f"This issue has been automatically assigned to @{assignee}.",
+                f"**Reason**: {assignment_reason}",
+            ]
+
+            # Add additional context if provided
+            if additional_context:
+                notification_parts.append("")
+                notification_parts.append("**Assignment Details:**")
+                for key, value in additional_context.items():
+                    notification_parts.append(f"- **{key}**: {value}")
+
+            notification_parts.extend(
+                [
+                    "",
+                    "---",
+                    "*This assignment was made by the Storyteller automation system.*",
+                    "*To override this assignment, update the assignee manually.*",
+                ]
+            )
+
+            notification_message = "\n".join(notification_parts)
+
+            # Add the notification comment
+            await self.add_issue_comment(
+                repository_name=repository_name,
+                issue_number=issue_number,
+                comment=notification_message,
+            )
+
+            logger.info(
+                f"Added assignment notification for issue #{issue_number} "
+                f"in {repository_name} (assigned to {assignee})"
+            )
+
+        except Exception as e:
+            logger.error(
+                f"Failed to add assignment notification for issue #{issue_number}: {e}"
+            )
+            # Don't re-raise - assignment notification failure shouldn't break the workflow

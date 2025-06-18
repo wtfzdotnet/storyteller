@@ -59,8 +59,12 @@ class TestParentChildTracking(unittest.TestCase):
         user_story = UserStory(epic_id=epic.id, title="Test User Story")
         self.db_manager.save_story(user_story)
 
-        sub_story1 = SubStory(user_story_id=user_story.id, title="Sub 1", department="backend")
-        sub_story2 = SubStory(user_story_id=user_story.id, title="Sub 2", department="frontend")
+        sub_story1 = SubStory(
+            user_story_id=user_story.id, title="Sub 1", department="backend"
+        )
+        sub_story2 = SubStory(
+            user_story_id=user_story.id, title="Sub 2", department="frontend"
+        )
         self.db_manager.save_story(sub_story1)
         self.db_manager.save_story(sub_story2)
 
@@ -87,7 +91,9 @@ class TestParentChildTracking(unittest.TestCase):
         user_story = UserStory(epic_id=epic.id, title="Test User Story")
         self.db_manager.save_story(user_story)
 
-        sub_story = SubStory(user_story_id=user_story.id, title="Sub Story", department="backend")
+        sub_story = SubStory(
+            user_story_id=user_story.id, title="Sub Story", department="backend"
+        )
         self.db_manager.save_story(sub_story)
 
         # Block the sub-story
@@ -105,9 +111,9 @@ class TestParentChildTracking(unittest.TestCase):
         """Test that relationship validation prevents circular dependencies."""
         # Create stories
         story1 = Epic(title="Story 1")
-        story2 = Epic(title="Story 2") 
+        story2 = Epic(title="Story 2")
         story3 = Epic(title="Story 3")
-        
+
         self.db_manager.save_story(story1)
         self.db_manager.save_story(story2)
         self.db_manager.save_story(story3)
@@ -124,15 +130,19 @@ class TestParentChildTracking(unittest.TestCase):
         """Test validation of parent-child relationships."""
         story1 = Epic(title="Story 1")
         story2 = Epic(title="Story 2")
-        
+
         self.db_manager.save_story(story1)
         self.db_manager.save_story(story2)
 
         # Valid relationship
-        self.assertTrue(self.db_manager.validate_parent_child_relationship(story2.id, story1.id))
+        self.assertTrue(
+            self.db_manager.validate_parent_child_relationship(story2.id, story1.id)
+        )
 
         # Invalid - self as parent
-        self.assertFalse(self.db_manager.validate_parent_child_relationship(story1.id, story1.id))
+        self.assertFalse(
+            self.db_manager.validate_parent_child_relationship(story1.id, story1.id)
+        )
 
     def test_dependency_chain_retrieval(self):
         """Test retrieving dependency chains."""
@@ -140,7 +150,7 @@ class TestParentChildTracking(unittest.TestCase):
         story1 = Epic(title="Story 1")
         story2 = Epic(title="Story 2")
         story3 = Epic(title="Story 3")
-        
+
         self.db_manager.save_story(story1)
         self.db_manager.save_story(story2)
         self.db_manager.save_story(story3)
@@ -151,7 +161,7 @@ class TestParentChildTracking(unittest.TestCase):
 
         # Get dependency chain
         dependencies = self.db_manager.get_dependency_chain(story1.id)
-        
+
         self.assertEqual(len(dependencies), 2)
         self.assertEqual(dependencies[0]["target_story_id"], story2.id)
         self.assertEqual(dependencies[1]["target_story_id"], story3.id)
@@ -165,10 +175,10 @@ class TestParentChildTracking(unittest.TestCase):
         # Create a story and relationship
         story1 = Epic(title="Story 1")
         story2 = Epic(title="Story 2")
-        
+
         self.db_manager.save_story(story1)
         self.db_manager.save_story(story2)
-        
+
         self.db_manager.add_story_relationship(story1.id, story2.id, "depends_on")
 
         # Should still have no issues
@@ -184,7 +194,7 @@ class TestParentChildTracking(unittest.TestCase):
         user_story1 = UserStory(epic_id=epic.id, title="US 1")  # Will be DONE
         user_story2 = UserStory(epic_id=epic.id, title="US 2")  # Will be IN_PROGRESS
         user_story3 = UserStory(epic_id=epic.id, title="US 3")  # Will stay DRAFT
-        
+
         self.db_manager.save_story(user_story1)
         self.db_manager.save_story(user_story2)
         self.db_manager.save_story(user_story3)
@@ -196,7 +206,7 @@ class TestParentChildTracking(unittest.TestCase):
         # Check epic progress
         hierarchy = self.db_manager.get_epic_hierarchy(epic.id)
         progress = hierarchy.get_epic_progress()
-        
+
         self.assertEqual(progress["total"], 3)
         self.assertEqual(progress["completed"], 1)  # Only one is DONE
         self.assertEqual(progress["percentage"], 33.3)

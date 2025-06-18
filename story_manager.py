@@ -623,15 +623,15 @@ class StoryManager:
     def validate_parent_child_relationship(self, child_id: str, parent_id: str) -> bool:
         """Validate that a parent-child relationship is valid (no cycles)."""
         return self.database.validate_parent_child_relationship(child_id, parent_id)
-    
+
     def get_dependency_chain(self, story_id: str) -> List[Dict[str, Any]]:
         """Get the full dependency chain for a story."""
         return self.database.get_dependency_chain(story_id)
-    
+
     def validate_relationship_integrity(self) -> List[str]:
         """Validate all relationships for integrity issues and return any problems found."""
         return self.database.validate_relationship_integrity()
-    
+
     def get_story_relationships(self, story_id: str) -> List[Dict[str, Any]]:
         """Get all relationships for a story."""
         return self.database.get_story_relationships(story_id)

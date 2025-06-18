@@ -670,6 +670,222 @@ class DatabaseManager:
 
         return _check_cycle(start_story_id)
 
+    def get_stories_topological_order(self, story_ids: List[str]) -> List[str]:
+        """Get stories ordered by their dependencies using topological sort."""
+        # Build adjacency list and in-degree count
+        graph = {story_id: [] for story_id in story_ids}
+        in_degree = {story_id: 0 for story_id in story_ids}
+
+        with self.get_connection() as conn:
+            # Get all dependencies for the given stories
+            for story_id in story_ids:
+                cursor = conn.execute(
+                    """
+                    SELECT target_story_id FROM story_relationships
+                    WHERE source_story_id = ? AND relationship_type = 'depends_on'
+                    AND target_story_id IN ({})
+                    """.format(
+                        ",".join("?" * len(story_ids))
+                    ),
+                    [story_id] + story_ids,
+                )
+
+                for row in cursor.fetchall():
+                    dependency_id = row[0]
+                    graph[dependency_id].append(story_id)
+                    in_degree[story_id] += 1
+
+        # Perform topological sort using Kahn's algorithm
+        queue = [story_id for story_id in story_ids if in_degree[story_id] == 0]
+        result = []
+
+        while queue:
+            current = queue.pop(0)
+            result.append(current)
+
+            for neighbor in graph[current]:
+                in_degree[neighbor] -= 1
+                if in_degree[neighbor] == 0:
+                    queue.append(neighbor)
+
+        # Check for cycles
+        if len(result) != len(story_ids):
+            raise ValueError(
+                "Circular dependency detected - cannot determine topological order"
+            )
+
+        return result
+
+    def calculate_dependency_priorities(self, story_ids: List[str]) -> Dict[str, int]:
+        """Calculate priority levels based on dependency depth (1 = highest priority)."""
+        priorities = {}
+        depths = self.analyze_dependency_depths(story_ids)
+
+        # Convert depths to priorities (deeper dependencies get higher priority/lower number)
+        for story_id, depth in depths.items():
+            priorities[story_id] = depth + 1
+
+        return priorities
+
+    def analyze_dependency_depths(self, story_ids: List[str]) -> Dict[str, int]:
+        """Analyze the dependency depth for each story (0 = no dependencies, higher = depends on more)."""
+        depths = {}
+
+        def _calculate_depth(story_id: str, visited: set) -> int:
+            if story_id in visited:
+                return 0  # Avoid infinite recursion on cycles
+            if story_id in depths:
+                return depths[story_id]
+
+            visited.add(story_id)
+            max_depth = 0
+
+            with self.get_connection() as conn:
+                cursor = conn.execute(
+                    """
+                    SELECT target_story_id FROM story_relationships
+                    WHERE source_story_id = ? AND relationship_type = 'depends_on'
+                    """,
+                    (story_id,),
+                )
+
+                dependencies = [row[0] for row in cursor.fetchall()]
+
+                if dependencies:
+                    # If this story has dependencies, its depth is 1 + max depth of its dependencies
+                    for dependency_id in dependencies:
+                        if (
+                            dependency_id in story_ids
+                        ):  # Only consider dependencies in our set
+                            dep_depth = _calculate_depth(dependency_id, visited.copy())
+                            max_depth = max(max_depth, dep_depth + 1)
+                else:
+                    # No dependencies means this is a base story with depth 0
+                    max_depth = 0
+
+            depths[story_id] = max_depth
+            return max_depth
+
+        for story_id in story_ids:
+            if story_id not in depths:
+                _calculate_depth(story_id, set())
+
+        return depths
+
+    def get_ordered_stories_for_parent(self, parent_id: str) -> List[Dict[str, Any]]:
+        """Get child stories ordered by dependencies for a given parent."""
+        with self.get_connection() as conn:
+            # Get all child stories
+            cursor = conn.execute(
+                "SELECT * FROM stories WHERE parent_id = ?", (parent_id,)
+            )
+
+            stories = [dict(row) for row in cursor.fetchall()]
+            if not stories:
+                return []
+
+            story_ids = [story["id"] for story in stories]
+
+            try:
+                # Get topological order
+                ordered_ids = self.get_stories_topological_order(story_ids)
+
+                # Return stories in dependency order
+                ordered_stories = []
+                for story_id in ordered_ids:
+                    story_data = next(s for s in stories if s["id"] == story_id)
+                    ordered_stories.append(story_data)
+
+                return ordered_stories
+            except ValueError:
+                # If there are cycles, return stories sorted by creation date
+                return sorted(stories, key=lambda s: s["created_at"])
+
+    def generate_dependency_visualization(self, story_ids: List[str]) -> str:
+        """Generate a visual representation of story dependencies."""
+        if not story_ids:
+            return "No stories to visualize."
+
+        # Get story information
+        stories = {}
+        with self.get_connection() as conn:
+            for story_id in story_ids:
+                cursor = conn.execute(
+                    "SELECT id, title, story_type FROM stories WHERE id = ?",
+                    (story_id,),
+                )
+                row = cursor.fetchone()
+                if row:
+                    stories[story_id] = {
+                        "id": row["id"],
+                        "title": row["title"],
+                        "type": row["story_type"],
+                    }
+
+        # Get dependencies
+        dependencies = {}
+        with self.get_connection() as conn:
+            cursor = conn.execute(
+                """
+                SELECT source_story_id, target_story_id FROM story_relationships
+                WHERE source_story_id IN ({}) AND target_story_id IN ({})
+                AND relationship_type = 'depends_on'
+                """.format(
+                    ",".join("?" * len(story_ids)), ",".join("?" * len(story_ids))
+                ),
+                story_ids + story_ids,
+            )
+
+            for row in cursor.fetchall():
+                source_id = row[0]
+                target_id = row[1]
+                if source_id not in dependencies:
+                    dependencies[source_id] = []
+                dependencies[source_id].append(target_id)
+
+        # Generate visualization
+        lines = ["Dependency Visualization:", "=" * 50]
+
+        # Add priority information
+        try:
+            priorities = self.calculate_dependency_priorities(story_ids)
+            depths = self.analyze_dependency_depths(story_ids)
+            topological_order = self.get_stories_topological_order(story_ids)
+
+            lines.append("\nExecution Order (dependencies first):")
+            for i, story_id in enumerate(topological_order, 1):
+                story = stories.get(story_id, {"title": "Unknown", "type": "unknown"})
+                priority = priorities.get(story_id, 0)
+                depth = depths.get(story_id, 0)
+                lines.append(
+                    f"  {i:2d}. [{story['type']:10}] {story['title']} (Priority: {priority}, Depth: {depth})"
+                )
+
+            lines.append("\nDependency Graph:")
+            for story_id in story_ids:
+                story = stories.get(story_id, {"title": "Unknown", "type": "unknown"})
+                story_deps = dependencies.get(story_id, [])
+
+                if story_deps:
+                    dep_titles = [
+                        stories.get(dep_id, {"title": "Unknown"})["title"]
+                        for dep_id in story_deps
+                    ]
+                    lines.append(
+                        f"  • {story['title']} → depends on → {', '.join(dep_titles)}"
+                    )
+                else:
+                    lines.append(f"  • {story['title']} (no dependencies)")
+
+        except ValueError as e:
+            lines.append(f"\nError: {e}")
+            lines.append("\nStories (unordered due to cycles):")
+            for story_id in story_ids:
+                story = stories.get(story_id, {"title": "Unknown", "type": "unknown"})
+                lines.append(f"  • [{story['type']:10}] {story['title']}")
+
+        return "\n".join(lines)
+
     def _row_to_story(self, row: sqlite3.Row) -> Union[Epic, UserStory, SubStory]:
         """Convert database row to appropriate story object."""
         story_type = StoryType(row["story_type"])

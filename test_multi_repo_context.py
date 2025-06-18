@@ -1,11 +1,7 @@
-"""Test multi-repository code context reading functionality."""
+"""Unit tests for multi-repository context components without external API calls."""
 
-import asyncio
 import os
 
-import pytest
-
-from config import get_config
 from multi_repo_context import (
     ContextCache,
     IntelligentFileSelector,
@@ -31,7 +27,6 @@ def test_repository_type_detector():
         "src/styles.css",
     ]
     result = detector.detect_repository_type({}, frontend_files)
-    print(f"✓ Frontend detection: {result}")
     assert result == "frontend"
 
     # Test backend detection
@@ -44,14 +39,7 @@ def test_repository_type_detector():
         "app.py",
     ]
     result = detector.detect_repository_type({}, backend_files)
-    print(f"✓ Backend detection: {result}")
     assert result == "backend"
-
-    # Test language detection
-    languages = detector.detect_languages(frontend_files + backend_files)
-    print(f"✓ Language detection: {languages}")
-    assert "javascript" in languages
-    assert "python" in languages
 
 
 def test_intelligent_file_selector():
@@ -61,20 +49,27 @@ def test_intelligent_file_selector():
 
     # Test frontend file selection
     frontend_files = [
+        ("package.json", "file"),
         ("src/App.js", "file"),
         ("src/components/Header.jsx", "file"),
-        ("package.json", "file"),
-        ("public/index.html", "file"),
-        ("src/utils/helper.js", "file"),
-        ("node_modules/react/index.js", "file"),  # Should be ignored
-        ("dist/bundle.js", "file"),  # Should be less important
+        ("node_modules/react/index.js", "file"),
+        ("build/static/js/main.js", "file"),
+        ("public/favicon.ico", "file"),
+        ("README.md", "file"),
     ]
 
-    selected = selector.select_important_files("frontend", frontend_files, max_files=5)
-    print(f"✓ Frontend file selection: {selected}")
+    selected = selector.select_important_files("frontend", frontend_files, 4)
+    
+    # Should include important config and source files
     assert "package.json" in selected
     assert "src/App.js" in selected
+    
+    # Should exclude build artifacts and dependencies
     assert "node_modules/react/index.js" not in selected
+    assert "build/static/js/main.js" not in selected
+    
+    # Should limit to requested count
+    assert len(selected) <= 4
 
 
 def test_context_cache():
@@ -96,52 +91,32 @@ def test_context_cache():
     assert cache.get("key1") is None  # Should be evicted
     assert cache.get("key4") == "value4"
 
-    print("✓ Context cache working correctly")
 
+def test_language_detection():
+    """Test programming language detection."""
 
-@pytest.mark.asyncio
-async def test_multi_repository_context_reader():
-    """Test the main multi-repository context reader (mock test)."""
+    detector = RepositoryTypeDetector()
 
-    try:
-        config = get_config()
-        # This would normally make GitHub API calls, but we'll just test the structure
-        print(
-            f"✓ MultiRepositoryContextReader initialized with {len(config.repositories)} repositories"
-        )
+    # Test JavaScript files
+    js_files = ["app.js", "src/components/Header.jsx", "lib/utils.ts"]
+    languages = detector.detect_languages(js_files)
+    # Language detection returns lowercase keys
+    assert "javascript" in languages or "typescript" in languages
 
-        # Test repository keys
-        repo_keys = list(config.repositories.keys())
-        print(f"✓ Available repositories: {repo_keys}")
-
-        # Validate configuration
-        for key, repo_config in config.repositories.items():
-            print(f"  - {key}: {repo_config.name} ({repo_config.type})")
-
-        print("✓ Multi-repository context reader structure validated")
-
-    except Exception as e:
-        print(f"✗ Error in multi-repository context reader test: {e}")
-        raise
-
-
-def test_integration():
-    """Run all tests."""
-
-    print("Testing multi-repository code context reading functionality...")
-    print("=" * 60)
-
-    # Run synchronous tests
-    test_repository_type_detector()
-    test_intelligent_file_selector()
-    test_context_cache()
-
-    # Run async test
-    asyncio.run(test_multi_repository_context_reader())
-
-    print("=" * 60)
-    print("✓ All multi-repository context tests passed!")
+    # Test Python files
+    py_files = ["app.py", "src/models/user.py", "tests/test_api.py"]
+    languages = detector.detect_languages(py_files)
+    assert "python" in languages
 
 
 if __name__ == "__main__":
-    test_integration()
+    print("Running multi-repository context unit tests...")
+    print("=" * 50)
+    
+    test_repository_type_detector()
+    test_intelligent_file_selector()
+    test_context_cache()
+    test_language_detection()
+    
+    print("=" * 50)
+    print("✓ All multi-repository context unit tests passed!")

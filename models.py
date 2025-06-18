@@ -306,3 +306,84 @@ class Conversation:
             "created_at": self.created_at.isoformat(),
             "updated_at": self.updated_at.isoformat(),
         }
+
+
+@dataclass
+class ProjectFieldValue:
+    """Represents a custom field value in a GitHub Project."""
+
+    field_id: str
+    value: Any
+    field_type: str = "text"  # text, number, date, single_select, iteration
+
+
+@dataclass
+class ProjectItemData:
+    """Data structure for GitHub Project item creation/update."""
+
+    content_id: str  # Issue or PR ID
+    project_id: str
+    field_values: List[ProjectFieldValue] = field(default_factory=list)
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to dictionary for GraphQL operations."""
+        return {
+            "content_id": self.content_id,
+            "project_id": self.project_id,
+            "field_values": [
+                {
+                    "field_id": fv.field_id,
+                    "value": fv.value,
+                    "field_type": fv.field_type,
+                }
+                for fv in self.field_values
+            ],
+        }
+
+
+@dataclass
+class ProjectData:
+    """Data structure for GitHub Project creation/management."""
+
+    title: str
+    description: str = ""
+    repository_id: Optional[str] = None  # Repository node ID if repo-level project
+    organization_login: Optional[str] = None  # Org login if org-level project
+    visibility: str = "PRIVATE"  # PRIVATE, PUBLIC
+    template: Optional[str] = None  # Template to use for project creation
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to dictionary for GraphQL operations."""
+        data = {
+            "title": self.title,
+            "description": self.description,
+            "visibility": self.visibility,
+        }
+        if self.repository_id:
+            data["repository_id"] = self.repository_id
+        if self.organization_login:
+            data["organization_login"] = self.organization_login
+        if self.template:
+            data["template"] = self.template
+        return data
+
+
+@dataclass
+class ProjectField:
+    """Represents a custom field in a GitHub Project."""
+
+    id: str
+    name: str
+    data_type: str  # TEXT, NUMBER, DATE, SINGLE_SELECT, ITERATION
+    options: List[Dict[str, Any]] = field(
+        default_factory=list
+    )  # For single_select fields
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to dictionary for operations."""
+        return {
+            "id": self.id,
+            "name": self.name,
+            "data_type": self.data_type,
+            "options": self.options,
+        }

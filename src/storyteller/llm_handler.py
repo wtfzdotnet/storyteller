@@ -7,7 +7,6 @@ from dataclasses import dataclass
 from typing import Any, Dict, List, Optional
 
 import aiohttp
-
 from config import Config
 
 logger = logging.getLogger(__name__)

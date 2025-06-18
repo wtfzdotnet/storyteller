@@ -1,7 +1,7 @@
 # GitHub Copilot Instructions for Storyteller
 
 ## Project Overview
-Storyteller is an AI-powered story management system that creates and manages user stories with expert analysis and GitHub integration. The system implements hierarchical story management (Epic ’ User Story ’ Sub-story) with multi-repository support and intelligent automation.
+Storyteller is an AI-powered story management system that creates and manages user stories with expert analysis and GitHub integration. The system implements hierarchical story management (Epic ï¿½ User Story ï¿½ Sub-story) with multi-repository support and intelligent automation.
 
 ## Core Architecture
 
@@ -64,7 +64,7 @@ class UserStory:
 ## Implementation Priorities
 
 ### Current Epic Implementation Order
-1. **Epic #28**: Hierarchical story management (Epic ’ User Story ’ Sub-story)
+1. **Epic #28**: Hierarchical story management (Epic ï¿½ User Story ï¿½ Sub-story)
 2. **Epic #29**: Multi-repository context intelligence with MCP
 3. **Epic #30**: Advanced GitHub Projects integration
 4. **Epic #31**: Automated agent workflow with pipeline monitoring
@@ -76,7 +76,7 @@ class UserStory:
 #### 1. Hierarchical Story Management
 - Database schema for Epic/UserStory/SubStory relationships
 - Parent-child relationship tracking
-- Status propagation (child completion ’ parent progress)
+- Status propagation (child completion ï¿½ parent progress)
 - Department-specific sub-story generation (Frontend, Backend, Testing, DevOps, etc.)
 
 #### 2. Enhanced MCP Server
@@ -203,6 +203,12 @@ async def reach_consensus(story_content: str, required_roles: List[str]) -> Cons
 - Test GitHub integration with test repositories
 - Verify MCP server functionality
 
+### Test Organization
+- **IMPORTANT**: All new test files MUST be placed in the `tests/` directory structure
+- Use `tests/unit/` for unit tests and `tests/integration/` for integration tests
+- Root-level test files (test_*.py) are legacy and should be moved to appropriate directories
+- Follow the pattern: `tests/unit/test_<component>.py` or `tests/integration/test_<feature>.py`
+
 ## CLI Command Patterns
 
 ### Story Creation
@@ -254,10 +260,19 @@ python main.py workflow resume --story-id story_abc123
 ### Code Quality Standards
 - Maintain high test coverage (>80%)
 - Use type hints consistently
-- Follow Python PEP 8 style guidelines
+- Follow Python PEP 8 style guidelines with 88-character line limit (Black formatting)
 - Document complex algorithms and business logic
 - Use meaningful variable and function names
 - Implement proper async/await patterns for I/O
+
+### Pipeline Quality Gates
+- **CRITICAL**: Always run linting and formatting before committing:
+  - `python -m flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics`
+  - `python -m black --check --diff .`
+  - `python -m isort --check-only --diff .`
+- Fix all formatting issues with: `python -m black .` and `python -m isort .`
+- Test files in root directory cause pipeline confusion - move to `tests/`
+- Use virtual environments for dependency isolation: `python -m venv venv && source venv/bin/activate`
 
 ### GitHub Integration
 - Always create issues with proper labels and assignments

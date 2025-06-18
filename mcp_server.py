@@ -15,6 +15,9 @@ from multi_repo_context import MultiRepositoryContextReader
 from story_manager import StoryManager
 from template_manager import TemplateManager
 
+# Setup paths for imports
+import setup_path
+
 logger = logging.getLogger(__name__)
 
 

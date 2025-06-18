@@ -4,6 +4,9 @@ import tempfile
 import unittest
 from pathlib import Path
 
+# Setup paths for imports
+import setup_path
+
 from database import DatabaseManager
 from models import Epic, StoryHierarchy, StoryStatus, StoryType, SubStory, UserStory
 

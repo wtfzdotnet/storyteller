@@ -6,11 +6,10 @@ from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Tuple
 
 import requests
+from config import Config, RepositoryConfig
 from github import Github, Repository
 from github.GithubException import GithubException
 from github.Issue import Issue
-
-from config import Config, RepositoryConfig
 from models import ProjectData, ProjectField
 
 logger = logging.getLogger(__name__)

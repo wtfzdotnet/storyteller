@@ -6,9 +6,8 @@ import os
 os.environ["GITHUB_TOKEN"] = "test_token"
 os.environ["DEFAULT_LLM_PROVIDER"] = "github"
 
-from fastapi.testclient import TestClient
-
 from api import app
+from fastapi.testclient import TestClient
 
 
 def test_webhook_endpoints():

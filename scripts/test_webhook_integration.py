@@ -8,11 +8,10 @@ os.environ["GITHUB_TOKEN"] = "test_token"
 os.environ["DEFAULT_LLM_PROVIDER"] = "github"
 os.environ["WEBHOOK_SECRET"] = ""  # Disable signature verification for testing
 
-from fastapi.testclient import TestClient
-
 from api import app
 from config import get_config
 from database import DatabaseManager
+from fastapi.testclient import TestClient
 from models import Epic, StoryStatus, SubStory, UserStory
 from webhook_handler import WebhookHandler
 

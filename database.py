@@ -210,14 +210,75 @@ class DatabaseManager:
 
             return [self._row_to_story(row) for row in cursor.fetchall()]
 
-    def update_story_status(self, story_id: str, status: StoryStatus) -> bool:
-        """Update the status of a story."""
+    def update_story_status(self, story_id: str, status: StoryStatus, propagate: bool = True) -> bool:
+        """Update the status of a story with optional status propagation to parent."""
         with self.get_connection() as conn:
             cursor = conn.execute(
                 "UPDATE stories SET status = ?, updated_at = ? WHERE id = ?",
                 (status.value, datetime.now(timezone.utc).isoformat(), story_id),
             )
+            
+            if cursor.rowcount > 0 and propagate:
+                self._propagate_status_to_parent(story_id, conn)
+            
             return cursor.rowcount > 0
+
+    def _propagate_status_to_parent(self, story_id: str, conn: sqlite3.Connection):
+        """Propagate status changes from child to parent story."""
+        # Get the current story to find its parent
+        cursor = conn.execute("SELECT parent_id, story_type FROM stories WHERE id = ?", (story_id,))
+        row = cursor.fetchone()
+        
+        if not row or not row["parent_id"]:
+            return  # No parent to propagate to
+        
+        parent_id = row["parent_id"]
+        
+        # Calculate new parent status based on children
+        new_parent_status = self._calculate_parent_status(parent_id, conn)
+        
+        if new_parent_status:
+            # Update parent status (without further propagation to avoid infinite loops)
+            conn.execute(
+                "UPDATE stories SET status = ?, updated_at = ? WHERE id = ?",
+                (new_parent_status.value, datetime.now(timezone.utc).isoformat(), parent_id),
+            )
+            
+            # Recursively propagate up the hierarchy
+            self._propagate_status_to_parent(parent_id, conn)
+
+    def _calculate_parent_status(self, parent_id: str, conn: sqlite3.Connection) -> Optional[StoryStatus]:
+        """Calculate what the parent status should be based on children statuses."""
+        # Get all children of this parent
+        cursor = conn.execute("SELECT status FROM stories WHERE parent_id = ?", (parent_id,))
+        child_statuses = [StoryStatus(row["status"]) for row in cursor.fetchall()]
+        
+        if not child_statuses:
+            return None  # No children, don't change parent status
+        
+        # Apply status propagation rules
+        done_count = sum(1 for status in child_statuses if status == StoryStatus.DONE)
+        in_progress_count = sum(1 for status in child_statuses if status == StoryStatus.IN_PROGRESS)
+        review_count = sum(1 for status in child_statuses if status == StoryStatus.REVIEW)
+        blocked_count = sum(1 for status in child_statuses if status == StoryStatus.BLOCKED)
+        total_count = len(child_statuses)
+        
+        # Status propagation rules based on SCHEMA.md
+        if done_count == total_count:
+            # All children are done -> parent is done
+            return StoryStatus.DONE
+        elif blocked_count > 0:
+            # Any child is blocked -> parent is blocked
+            return StoryStatus.BLOCKED
+        elif in_progress_count > 0 or review_count > 0:
+            # Any child is in progress or review -> parent is in progress
+            return StoryStatus.IN_PROGRESS
+        elif all(status in [StoryStatus.READY, StoryStatus.DRAFT] for status in child_statuses):
+            # All children are ready or draft -> parent should be ready
+            return StoryStatus.READY
+        else:
+            # Mixed states, keep parent in progress
+            return StoryStatus.IN_PROGRESS
 
     def delete_story(self, story_id: str) -> bool:
         """Delete a story and all its children (CASCADE)."""
@@ -231,8 +292,44 @@ class DatabaseManager:
         target_id: str,
         relationship_type: str,
         metadata: Dict[str, Any] = None,
+        validate: bool = True,
     ):
-        """Add a relationship between two stories."""
+        """Add a relationship between two stories with optional validation."""
+        if validate and relationship_type == "depends_on":
+            # Check if this would create a circular dependency
+            with self.get_connection() as conn:
+                # Temporarily add the relationship to check for cycles
+                temp_conn = sqlite3.connect(":memory:")
+                temp_conn.row_factory = sqlite3.Row
+                temp_conn.execute("PRAGMA foreign_keys = ON")
+                
+                # Copy current relationships to memory
+                with self.get_connection() as main_conn:
+                    main_conn.backup(temp_conn)
+                
+                # Add the new relationship temporarily
+                temp_conn.execute(
+                    """
+                    INSERT INTO story_relationships 
+                    (source_story_id, target_story_id, relationship_type, created_at, metadata)
+                    VALUES (?, ?, ?, ?, ?)
+                    """,
+                    (
+                        source_id,
+                        target_id,
+                        relationship_type,
+                        datetime.now(timezone.utc).isoformat(),
+                        json.dumps(metadata or {}),
+                    ),
+                )
+                
+                # Check for cycles with temporary data
+                if self._has_circular_dependency_in_conn(source_id, temp_conn):
+                    temp_conn.close()
+                    raise ValueError(f"Adding relationship would create circular dependency: {source_id} -> {target_id}")
+                
+                temp_conn.close()
+        
         with self.get_connection() as conn:
             conn.execute(
                 """
@@ -290,6 +387,149 @@ class DatabaseManager:
                 "SELECT * FROM github_issues WHERE story_id = ?", (story_id,)
             )
             return [dict(row) for row in cursor.fetchall()]
+
+    def validate_parent_child_relationship(self, child_id: str, parent_id: str) -> bool:
+        """Validate that a parent-child relationship is valid (no cycles)."""
+        if child_id == parent_id:
+            return False  # Can't be parent of itself
+        
+        # Check if making this relationship would create a cycle
+        return not self._would_create_cycle(child_id, parent_id)
+    
+    def _would_create_cycle(self, child_id: str, potential_parent_id: str) -> bool:
+        """Check if setting potential_parent_id as parent of child_id would create a cycle."""
+        visited = set()
+        current = potential_parent_id
+        
+        with self.get_connection() as conn:
+            while current and current not in visited:
+                visited.add(current)
+                
+                # If we reach the child_id while traversing up, it would create a cycle
+                if current == child_id:
+                    return True
+                
+                # Get parent of current node
+                cursor = conn.execute("SELECT parent_id FROM stories WHERE id = ?", (current,))
+                row = cursor.fetchone()
+                current = row["parent_id"] if row else None
+        
+        return False
+    
+    def get_dependency_chain(self, story_id: str) -> List[Dict[str, Any]]:
+        """Get the full dependency chain for a story."""
+        dependencies = []
+        visited = set()
+        
+        def _get_dependencies_recursive(current_id: str):
+            if current_id in visited:
+                return  # Avoid infinite loops
+            
+            visited.add(current_id)
+            
+            with self.get_connection() as conn:
+                cursor = conn.execute(
+                    """
+                    SELECT target_story_id, relationship_type, metadata 
+                    FROM story_relationships 
+                    WHERE source_story_id = ? AND relationship_type = 'depends_on'
+                    """,
+                    (current_id,)
+                )
+                
+                for row in cursor.fetchall():
+                    dep_info = dict(row)
+                    dependencies.append(dep_info)
+                    _get_dependencies_recursive(dep_info["target_story_id"])
+        
+        _get_dependencies_recursive(story_id)
+        return dependencies
+
+    def validate_relationship_integrity(self) -> List[str]:
+        """Validate all relationships for integrity issues and return any problems found."""
+        issues = []
+        
+        with self.get_connection() as conn:
+            # Check for orphaned relationships (references to non-existent stories)
+            cursor = conn.execute(
+                """
+                SELECT DISTINCT source_story_id FROM story_relationships 
+                WHERE source_story_id NOT IN (SELECT id FROM stories)
+                UNION
+                SELECT DISTINCT target_story_id FROM story_relationships 
+                WHERE target_story_id NOT IN (SELECT id FROM stories)
+                """
+            )
+            
+            for row in cursor.fetchall():
+                issues.append(f"Orphaned relationship references non-existent story: {row[0]}")
+            
+            # Check for circular dependencies in 'depends_on' relationships
+            cursor = conn.execute(
+                "SELECT DISTINCT source_story_id FROM story_relationships WHERE relationship_type = 'depends_on'"
+            )
+            
+            for row in cursor.fetchall():
+                story_id = row[0]
+                if self._has_circular_dependency(story_id):
+                    issues.append(f"Circular dependency detected starting from story: {story_id}")
+        
+        return issues
+    
+    def _has_circular_dependency(self, start_story_id: str) -> bool:
+        """Check if a story has circular dependencies."""
+        visited = set()
+        
+        def _check_cycle(current_id: str) -> bool:
+            if current_id in visited:
+                return True  # Found a cycle
+            
+            visited.add(current_id)
+            
+            with self.get_connection() as conn:
+                cursor = conn.execute(
+                    """
+                    SELECT target_story_id FROM story_relationships 
+                    WHERE source_story_id = ? AND relationship_type = 'depends_on'
+                    """,
+                    (current_id,)
+                )
+                
+                for row in cursor.fetchall():
+                    if _check_cycle(row[0]):
+                        return True
+            
+            visited.remove(current_id)  # Backtrack
+            return False
+        
+        return _check_cycle(start_story_id)
+    
+    def _has_circular_dependency_in_conn(self, start_story_id: str, conn: sqlite3.Connection) -> bool:
+        """Check if a story has circular dependencies using a specific connection."""
+        visited = set()
+        
+        def _check_cycle(current_id: str) -> bool:
+            if current_id in visited:
+                return True  # Found a cycle
+            
+            visited.add(current_id)
+            
+            cursor = conn.execute(
+                """
+                SELECT target_story_id FROM story_relationships 
+                WHERE source_story_id = ? AND relationship_type = 'depends_on'
+                """,
+                (current_id,)
+            )
+            
+            for row in cursor.fetchall():
+                if _check_cycle(row[0]):
+                    return True
+            
+            visited.remove(current_id)  # Backtrack
+            return False
+        
+        return _check_cycle(start_story_id)
 
     def _row_to_story(self, row: sqlite3.Row) -> Union[Epic, UserStory, SubStory]:
         """Convert database row to appropriate story object."""

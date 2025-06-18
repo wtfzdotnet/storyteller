@@ -12,7 +12,7 @@ SAMPLE_REPOSITORIES = {
     },
     "backend": {
         "name": "wtfzdotnet/backend-repo",
-        "type": "backend", 
+        "type": "backend",
         "description": "API services and business logic",
         "dependencies": [],
         "story_labels": ["backend", "api"],
@@ -20,7 +20,7 @@ SAMPLE_REPOSITORIES = {
     "frontend": {
         "name": "wtfzdotnet/frontend-repo",
         "type": "frontend",
-        "description": "User interface and client applications", 
+        "description": "User interface and client applications",
         "dependencies": ["backend"],
         "story_labels": ["frontend", "ui"],
     },
@@ -66,7 +66,7 @@ SAMPLE_STORY_DATA = {
 SAMPLE_FILES = {
     "frontend": [
         "package.json",
-        "src/App.js", 
+        "src/App.js",
         "src/components/Login.js",
         "public/index.html",
         "src/styles/main.css",

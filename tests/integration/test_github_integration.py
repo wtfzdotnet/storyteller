@@ -99,7 +99,7 @@ def test_hierarchical_integration():
 
 def test_story_manager_database_operations():
     """Test StoryManager database operations."""
-    
+
     # Use temporary database for testing
     temp_file = tempfile.NamedTemporaryFile(delete=False)
     temp_file.close()
@@ -121,7 +121,7 @@ def test_story_manager_database_operations():
         retrieved_epic = story_manager.get_story(epic.id)
         assert retrieved_epic is not None
         assert retrieved_epic.title == "Database Test Epic"
-        
+
         # Test epic listing
         epics = story_manager.get_all_epics()
         assert len(epics) == 1
@@ -130,7 +130,7 @@ def test_story_manager_database_operations():
         # Test epic update
         success = story_manager.update_story_status(epic.id, StoryStatus.IN_PROGRESS)
         assert success
-        
+
         updated_epic = story_manager.get_story(epic.id)
         assert updated_epic.status == StoryStatus.IN_PROGRESS
 
@@ -141,7 +141,7 @@ def test_story_manager_database_operations():
 
 def test_story_manager_github_integration():
     """Test StoryManager GitHub integration capabilities."""
-    
+
     # Use temporary database for testing
     temp_file = tempfile.NamedTemporaryFile(delete=False)
     temp_file.close()
@@ -163,7 +163,7 @@ def test_story_manager_github_integration():
         # Test that epic was created with GitHub-compatible data
         assert epic.target_repositories == ["storyteller"]
         assert epic.id is not None
-        
+
         # Test retrieving epic with GitHub data
         retrieved_epic = story_manager.get_story(epic.id)
         assert retrieved_epic.target_repositories == ["storyteller"]

@@ -22,9 +22,9 @@ def temp_database():
     """Create a temporary database for testing."""
     with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as tmp_file:
         db_path = tmp_file.name
-    
+
     yield db_path
-    
+
     # Cleanup
     if Path(db_path).exists():
         Path(db_path).unlink()
@@ -76,7 +76,7 @@ def sample_sub_story_data():
 def mock_github_config():
     """Mock GitHub configuration for testing."""
     from config import Config
-    
+
     return Config(
         github_token="test_token",
         default_llm_provider="github",
@@ -88,15 +88,15 @@ def mock_github_config():
 def conversation_participant():
     """Basic conversation participant for testing."""
     from models import ConversationParticipant
-    
+
     return ConversationParticipant(name="Test", role="developer")
 
 
-@pytest.fixture  
+@pytest.fixture
 def test_message():
     """Basic message for testing."""
     from models import Message
-    
+
     return Message(
         content="Test message",
         sender="test_sender",

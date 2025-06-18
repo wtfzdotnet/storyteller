@@ -1,21 +1,18 @@
 """MCP (Model Context Protocol) Server for AI Story Management System."""
 
-import asyncio
-import json
 import logging
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Callable, Dict, Optional
-
-from template_manager import TemplateManager
 
 from automation.workflow_processor import WorkflowProcessor
 from config import (
     Config,
     get_config,
 )
-from story_manager import StoryManager
 from multi_repo_context import MultiRepositoryContextReader
+from story_manager import StoryManager
+from template_manager import TemplateManager
 
 logger = logging.getLogger(__name__)
 
@@ -672,7 +669,9 @@ class MCPStoryServer:
                 "error": "AnalysisError",
             }
 
-    async def _handle_get_repository_context(self, params: Dict[str, Any]) -> Dict[str, Any]:
+    async def _handle_get_repository_context(
+        self, params: Dict[str, Any]
+    ) -> Dict[str, Any]:
         """Handle repository context request."""
         logger.info("[MCP] context/repository")
 
@@ -736,7 +735,9 @@ class MCPStoryServer:
                 "error": "ContextError",
             }
 
-    async def _handle_get_multi_repository_context(self, params: Dict[str, Any]) -> Dict[str, Any]:
+    async def _handle_get_multi_repository_context(
+        self, params: Dict[str, Any]
+    ) -> Dict[str, Any]:
         """Handle multi-repository context request."""
         logger.info("[MCP] context/multi_repository")
 
@@ -766,7 +767,15 @@ class MCPStoryServer:
                                 "size": f.size,
                                 "importance_score": f.importance_score,
                                 # Only include content for very important files to avoid size issues
-                                "content": f.content if f.importance_score > 8.0 else f.content[:500] + "..." if len(f.content) > 500 else f.content,
+                                "content": (
+                                    f.content
+                                    if f.importance_score > 8.0
+                                    else (
+                                        f.content[:500] + "..."
+                                        if len(f.content) > 500
+                                        else f.content
+                                    )
+                                ),
                             }
                             for f in ctx.key_files
                         ],
@@ -853,7 +862,9 @@ class MCPStoryServer:
                 "error": "FileError",
             }
 
-    async def _handle_get_repository_structure(self, params: Dict[str, Any]) -> Dict[str, Any]:
+    async def _handle_get_repository_structure(
+        self, params: Dict[str, Any]
+    ) -> Dict[str, Any]:
         """Handle repository structure request."""
         logger.info("[MCP] context/repository_structure")
 
@@ -878,8 +889,10 @@ class MCPStoryServer:
                 }
 
             # Get repository structure using GitHub handler
-            structure = await self.context_reader.github_handler.get_repository_structure(
-                repo_config.name, ref
+            structure = (
+                await self.context_reader.github_handler.get_repository_structure(
+                    repo_config.name, ref
+                )
             )
 
             return {

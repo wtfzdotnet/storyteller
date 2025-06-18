@@ -30,6 +30,15 @@ class StoryWorkflowConfig:
 
 
 @dataclass
+class WebhookConfig:
+    """Configuration for webhook-based status transitions."""
+
+    enabled: bool = True
+    secret: Optional[str] = None
+    status_mappings: Dict[str, str] = field(default_factory=dict)
+
+
+@dataclass
 class Config:
     """Main configuration class for the AI Story Management System."""
 
@@ -54,6 +63,10 @@ class Config:
 
     # Development Configuration
     debug_mode: bool = False
+
+    # Webhook Configuration
+    webhook_config: WebhookConfig = field(default_factory=WebhookConfig)
+    webhook_secret: Optional[str] = None
 
     # Multi-Repository Configuration
     repositories: Dict[str, RepositoryConfig] = field(default_factory=dict)
@@ -94,6 +107,7 @@ def load_config() -> Config:
             os.getenv("AUTO_CONSENSUS_MAX_ITERATIONS", "10")
         ),
         debug_mode=os.getenv("DEBUG_MODE", "false").lower() == "true",
+        webhook_secret=os.getenv("WEBHOOK_SECRET"),
     )
 
     # Load multi-repository configuration if exists
@@ -123,6 +137,14 @@ def load_config() -> Config:
             config.story_workflow = StoryWorkflowConfig(
                 create_subtickets=workflow_data.get("create_subtickets", True),
                 respect_dependencies=workflow_data.get("respect_dependencies", True),
+            )
+
+            # Parse webhook config
+            webhook_data = config_data.get("webhook_config", {})
+            config.webhook_config = WebhookConfig(
+                enabled=webhook_data.get("enabled", True),
+                secret=webhook_data.get("secret"),
+                status_mappings=webhook_data.get("status_mappings", {}),
             )
 
         except (json.JSONDecodeError, KeyError) as e:

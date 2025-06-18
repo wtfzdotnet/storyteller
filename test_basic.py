@@ -10,13 +10,14 @@ os.environ["DEFAULT_LLM_PROVIDER"] = "github"
 def test_imports():
     """Test that core modules can be imported without errors."""
     try:
-        from conversation_manager import ConversationManager
-        from models import Conversation, ConversationParticipant, Message
+        from config import get_config
+        from models import ConversationParticipant
         from multi_repo_context import (
             ContextCache,
             IntelligentFileSelector,
             RepositoryTypeDetector,
         )
+        from webhook_handler import WebhookHandler
 
         # Test instantiation of basic classes
         participant = ConversationParticipant(name="Test", role="developer")
@@ -30,6 +31,11 @@ def test_imports():
 
         cache = ContextCache()
         assert cache is not None
+
+        # Test webhook handler
+        config = get_config()
+        webhook_handler = WebhookHandler(config)
+        assert webhook_handler is not None
 
         print("✓ All core imports and basic instantiation work")
 

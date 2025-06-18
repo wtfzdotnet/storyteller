@@ -842,6 +842,26 @@ class StoryManager:
         """Get all relationships for a story."""
         return self.database.get_story_relationships(story_id)
 
+    def get_stories_dependency_order(self, story_ids: List[str]) -> List[str]:
+        """Get stories ordered by their dependencies using topological sort."""
+        return self.database.get_stories_topological_order(story_ids)
+
+    def calculate_story_priorities(self, story_ids: List[str]) -> Dict[str, int]:
+        """Calculate priority levels based on dependency depth (1 = highest priority)."""
+        return self.database.calculate_dependency_priorities(story_ids)
+
+    def analyze_story_dependency_depths(self, story_ids: List[str]) -> Dict[str, int]:
+        """Analyze the dependency depth for each story (0 = no dependencies)."""
+        return self.database.analyze_dependency_depths(story_ids)
+
+    def get_ordered_child_stories(self, parent_id: str) -> List[Dict[str, Any]]:
+        """Get child stories ordered by dependencies for a given parent."""
+        return self.database.get_ordered_stories_for_parent(parent_id)
+
+    def generate_dependency_visualization(self, story_ids: List[str]) -> str:
+        """Generate a visual representation of story dependencies."""
+        return self.database.generate_dependency_visualization(story_ids)
+
     def link_github_issue(
         self, story_id: str, repository_name: str, issue_number: int, issue_url: str
     ):

@@ -12,6 +12,8 @@ from database import DatabaseManager
 from github_handler import GitHubHandler
 from llm_handler import LLMHandler
 from models import Epic, StoryHierarchy, StoryStatus, SubStory, UserStory
+from multi_repo_context import MultiRepositoryContextReader
+from role_analyzer import RoleAssignmentEngine
 
 logger = logging.getLogger(__name__)
 
@@ -61,6 +63,10 @@ class StoryProcessor:
         self.database = DatabaseManager()  # Add database support
         self.role_definitions = load_role_files()
         self._processing_queue: Dict[str, ProcessedStory] = {}
+
+        # Add role assignment engine and context manager
+        self.role_assignment_engine = RoleAssignmentEngine(self.config)
+        self.context_reader = MultiRepositoryContextReader(self.config)
 
     def _generate_story_id(self) -> str:
         """Generate a unique story ID."""
@@ -127,6 +133,78 @@ Respond with a JSON object containing:
                 "themes": ["general"],
                 "reasoning": "Default analysis due to parsing error",
             }
+
+    async def assign_roles_intelligently(
+        self,
+        story_content: str,
+        target_repositories: Optional[List[str]] = None,
+        manual_role_overrides: Optional[List[str]] = None,
+    ) -> Dict[str, Any]:
+        """
+        Use intelligent role assignment based on repository context and story content.
+
+        Args:
+            story_content: The user story content
+            target_repositories: List of repository names to analyze
+            manual_role_overrides: Manually specified roles to include
+
+        Returns:
+            Dictionary with role assignment results and metadata
+        """
+        story_id = self._generate_story_id()
+
+        # Get repository contexts if target repositories specified
+        repository_contexts = []
+        if target_repositories:
+            for repo_name in target_repositories:
+                if repo_name in self.config.repositories:
+                    try:
+                        context = await self.context_reader.get_repository_context(
+                            repo_name
+                        )
+                        repository_contexts.append(context)
+                    except Exception as e:
+                        logger.warning(
+                            f"Failed to get context for repository {repo_name}: {e}"
+                        )
+
+        # If no repository contexts available, create minimal context from config
+        if not repository_contexts:
+            for repo_name, repo_config in self.config.repositories.items():
+                from multi_repo_context import RepositoryContext
+
+                minimal_context = RepositoryContext(
+                    repository=repo_name,
+                    repo_type=repo_config.type,
+                    description=repo_config.description,
+                    languages={},  # Empty since we don't have actual context
+                    key_files=[],
+                )
+                repository_contexts.append(minimal_context)
+
+        # Assign roles using the intelligent engine
+        assignment_result = self.role_assignment_engine.assign_roles(
+            story_content=story_content,
+            repository_contexts=repository_contexts,
+            story_id=story_id,
+            manual_overrides=manual_role_overrides,
+        )
+
+        # Convert to format compatible with existing workflow
+        primary_role_names = [r.role_name for r in assignment_result.primary_roles]
+        secondary_role_names = [r.role_name for r in assignment_result.secondary_roles]
+        all_recommended_roles = primary_role_names + secondary_role_names
+
+        return {
+            "story_id": story_id,
+            "recommended_roles": all_recommended_roles,
+            "primary_roles": primary_role_names,
+            "secondary_roles": secondary_role_names,
+            "target_repositories": target_repositories
+            or [r.repository for r in repository_contexts],
+            "assignment_details": assignment_result,
+            "reasoning": f"Intelligent assignment based on {len(repository_contexts)} repository contexts",
+        }
 
     async def get_expert_analysis(
         self,

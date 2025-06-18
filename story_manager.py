@@ -969,7 +969,7 @@ Estimated Duration: {epic.estimated_duration_weeks} weeks"""
         user_story_id: str,
         departments: Optional[List[str]] = None,
     ) -> List[SubStory]:
-        """Generate sub-stories for different departments based on user story content."""
+        """Generate context-aware sub-stories for different departments based on user story content."""
 
         # Get the user story
         user_story = self.database.get_story(user_story_id)
@@ -980,9 +980,34 @@ Estimated Duration: {epic.estimated_duration_weeks} weeks"""
         if departments is None:
             departments = ["backend", "frontend", "testing", "devops"]
 
-        # Analyze the user story to determine relevant departments
+        # Gather repository context for the user story's target repositories
+        repository_contexts = []
+        try:
+            for repo_key in user_story.target_repositories:
+                if repo_key in self.processor.config.repositories:
+                    repo_context = await self.processor.context_reader.get_repository_context(
+                        repo_key, max_files=10, use_cache=True
+                    )
+                    if repo_context:
+                        repository_contexts.append({
+                            "repository": repo_context.repository,
+                            "repo_type": repo_context.repo_type,
+                            "description": repo_context.description,
+                            "key_technologies": [f.language for f in repo_context.key_files[:5]],
+                            "dependencies": repo_context.dependencies[:10],
+                            "important_files": [
+                                {"path": f.path, "type": f.file_type, "importance": f.importance_score}
+                                for f in repo_context.key_files[:3]
+                            ]
+                        })
+                        logger.info(f"Gathered repository context for sub-story generation: {repo_key}")
+        except Exception as e:
+            logger.warning(f"Failed to gather repository context for sub-story generation: {e}")
+            repository_contexts = []
+
+        # Analyze the user story to determine relevant departments with repository context
         relevant_departments = await self._analyze_user_story_for_departments(
-            user_story, departments
+            user_story, departments, repository_contexts
         )
 
         # Generate sub-stories for each relevant department
@@ -1039,37 +1064,65 @@ Estimated Duration: {epic.estimated_duration_weeks} weeks"""
         self,
         user_story: UserStory,
         available_departments: List[str],
+        repository_contexts: Optional[List[Dict[str, Any]]] = None,
     ) -> List[Dict[str, Any]]:
-        """Analyze a user story to determine which departments need sub-stories."""
+        """Analyze a user story to determine which departments need sub-stories with repository context."""
+
+        # Build context-aware department descriptions
+        dept_descriptions = {
+            "backend": "API services, database operations, business logic",
+            "frontend": "User interfaces, client applications, user experience", 
+            "testing": "Quality assurance, test automation, validation",
+            "devops": "Infrastructure, deployment, monitoring, security"
+        }
+
+        # Enhance descriptions with repository context
+        if repository_contexts:
+            for repo_ctx in repository_contexts:
+                repo_type = repo_ctx.get("repo_type", "")
+                if repo_type in dept_descriptions:
+                    tech_stack = ", ".join(repo_ctx.get("key_technologies", [])[:3])
+                    dependencies = ", ".join(repo_ctx.get("dependencies", [])[:3])
+                    if tech_stack:
+                        dept_descriptions[repo_type] += f" (Tech: {tech_stack})"
+                    if dependencies:
+                        dept_descriptions[repo_type] += f" (Deps: {dependencies})"
 
         system_prompt = f"""You are analyzing a user story to determine which development departments need to work on it and what specific tasks each department should handle.
 
 Available departments: {available_departments}
-- backend: API services, database operations, business logic
-- frontend: User interfaces, client applications, user experience
-- testing: Quality assurance, test automation, validation
-- devops: Infrastructure, deployment, monitoring, security
+{chr(10).join(f"- {dept}: {desc}" for dept, desc in dept_descriptions.items() if dept in available_departments)}
+
+Repository Context Information:
+{chr(10).join([
+    f"- {ctx.get('repository', 'unknown')} ({ctx.get('repo_type', 'unknown')}): "
+    f"Technologies: {', '.join(ctx.get('key_technologies', [])[:3])}, "
+    f"Dependencies: {', '.join(ctx.get('dependencies', [])[:3])}"
+    for ctx in (repository_contexts or [])
+])}
 
 For each relevant department, provide:
-1. Specific tasks they need to complete
+1. Specific tasks they need to complete (consider the technology stack and existing dependencies)
 2. Dependencies on other departments
 3. Estimated hours of work
 4. Target repository
+5. Technology-specific requirements based on repository context
 
 Respond with a JSON array of department assignments:
 [
   {{
     "department": "backend",
     "title": "Backend Implementation for [Feature]",
-    "description": "Implement backend components for the user story",
+    "description": "Implement backend components for the user story using identified technologies",
     "tasks": ["task1", "task2", "task3"],
     "dependencies": ["other_department"],
     "target_repository": "backend",
-    "estimated_hours": 8
+    "estimated_hours": 8,
+    "technical_context": "Context-specific technical considerations"
   }}
 ]
 
-Only include departments that are actually needed for this user story. Consider the user story's target repositories and acceptance criteria."""
+Only include departments that are actually needed for this user story. Consider the user story's target repositories, acceptance criteria, and the available technology stack."""
 
         user_story_content = f"""User Story: {user_story.title}
 
@@ -1095,67 +1148,101 @@ Story Points: {user_story.story_points}"""
             return departments_analysis
 
         except (json.JSONDecodeError, KeyError) as e:
-            logger.warning(f"Failed to parse department analysis, using fallback: {e}")
-            # Fallback: create sub-stories for common departments based on target repos
+            logger.warning(f"Failed to parse department analysis, using context-aware fallback: {e}")
+            # Enhanced fallback with repository context
             fallback_departments = []
 
             if "backend" in user_story.target_repositories:
-                fallback_departments.append(
-                    {
-                        "department": "backend",
-                        "title": f"Backend Implementation: {user_story.title}",
-                        "description": "Implement backend components for this user story",
-                        "tasks": [
-                            "API development",
-                            "Database operations",
-                            "Business logic",
-                        ],
-                        "dependencies": [],
-                        "target_repository": "backend",
-                        "estimated_hours": 8,
-                    }
+                backend_context = next(
+                    (ctx for ctx in (repository_contexts or []) if ctx.get("repo_type") == "backend"),
+                    {}
                 )
+                
+                tasks = ["API development", "Database operations", "Business logic"]
+                tech_context = "Standard backend implementation"
+                
+                # Enhance tasks based on repository context
+                if backend_context:
+                    dependencies = backend_context.get("dependencies", [])
+                    if any("fastapi" in dep.lower() for dep in dependencies):
+                        tasks.extend(["FastAPI route implementation", "Pydantic model validation"])
+                        tech_context = "FastAPI-based API development"
+                    elif any("flask" in dep.lower() for dep in dependencies):
+                        tasks.extend(["Flask route implementation", "Request validation"])
+                        tech_context = "Flask-based API development"
+                    
+                    if any(db in dep.lower() for dep in dependencies for db in ["postgres", "mysql", "sqlite"]):
+                        tasks.append("Database schema and migration management")
+                
+                fallback_departments.append({
+                    "department": "backend",
+                    "title": f"Backend Implementation: {user_story.title}",
+                    "description": "Implement backend components for this user story",
+                    "tasks": tasks,
+                    "dependencies": [],
+                    "target_repository": "backend",
+                    "estimated_hours": 8,
+                    "technical_context": tech_context
+                })
 
             if "frontend" in user_story.target_repositories:
-                fallback_departments.append(
-                    {
-                        "department": "frontend",
-                        "title": f"Frontend Implementation: {user_story.title}",
-                        "description": "Implement frontend components for this user story",
-                        "tasks": [
-                            "UI development",
-                            "API integration",
-                            "User experience",
-                        ],
-                        "dependencies": (
-                            ["backend"]
-                            if "backend" in user_story.target_repositories
-                            else []
-                        ),
-                        "target_repository": "frontend",
-                        "estimated_hours": 12,
-                    }
+                frontend_context = next(
+                    (ctx for ctx in (repository_contexts or []) if ctx.get("repo_type") == "frontend"),
+                    {}
                 )
+                
+                tasks = ["UI development", "API integration", "User experience"]
+                tech_context = "Standard frontend implementation"
+                
+                # Enhance tasks based on repository context
+                if frontend_context:
+                    dependencies = frontend_context.get("dependencies", [])
+                    if any("react" in dep.lower() for dep in dependencies):
+                        tasks.extend(["React component development", "State management with hooks"])
+                        tech_context = "React-based frontend development"
+                    elif any("vue" in dep.lower() for dep in dependencies):
+                        tasks.extend(["Vue component development", "State management"])
+                        tech_context = "Vue.js-based frontend development"
+                    
+                    if any(style in dep.lower() for dep in dependencies for style in ["styled", "tailwind", "material"]):
+                        tasks.append("Responsive styling and theme implementation")
+
+                fallback_departments.append({
+                    "department": "frontend",
+                    "title": f"Frontend Implementation: {user_story.title}",
+                    "description": "Implement frontend components for this user story",
+                    "tasks": tasks,
+                    "dependencies": (
+                        ["backend"] if "backend" in user_story.target_repositories else []
+                    ),
+                    "target_repository": "frontend",
+                    "estimated_hours": 12,
+                    "technical_context": tech_context
+                })
 
             # Always include testing if there are other departments
             if fallback_departments:
-                fallback_departments.append(
-                    {
-                        "department": "testing",
-                        "title": f"Testing: {user_story.title}",
-                        "description": "Test all components of this user story",
-                        "tasks": [
-                            "Test planning",
-                            "Test implementation",
-                            "Quality validation",
-                        ],
-                        "dependencies": [d["department"] for d in fallback_departments],
-                        "target_repository": fallback_departments[0][
-                            "target_repository"
-                        ],
-                        "estimated_hours": 6,
-                    }
-                )
+                testing_tasks = ["Test planning", "Test implementation", "Quality validation"]
+                
+                # Add technology-specific testing tasks
+                if repository_contexts:
+                    for ctx in repository_contexts:
+                        dependencies = ctx.get("dependencies", [])
+                        if any("pytest" in dep.lower() for dep in dependencies):
+                            testing_tasks.append("Python unit tests with pytest")
+                        if any("jest" in dep.lower() for dep in dependencies):
+                            testing_tasks.append("JavaScript unit tests with Jest")
+
+                fallback_departments.append({
+                    "department": "testing",
+                    "title": f"Testing: {user_story.title}",
+                    "description": "Test all components of this user story",
+                    "tasks": testing_tasks,
+                    "dependencies": [d["department"] for d in fallback_departments],
+                    "target_repository": fallback_departments[0]["target_repository"],
+                    "estimated_hours": 6,
+                    "technical_context": "Comprehensive testing across technology stack"
+                })
 
             return fallback_departments
 

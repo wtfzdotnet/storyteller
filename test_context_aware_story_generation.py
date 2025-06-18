@@ -313,5 +313,138 @@ class TestContextAwareStoryGeneration(unittest.TestCase):
             asyncio.run(run_test())
 
 
+    def test_repository_specific_sub_story_creation(self):
+        """Test that repository-specific sub-stories are created with context awareness."""
+        
+        with (
+            patch.object(self.story_processor, "analyze_story_content") as mock_analyze_content,
+            patch.object(self.story_processor.context_reader, "get_repository_context") as mock_get_repo_context,
+            patch.object(self.story_processor.llm_handler, "analyze_story_with_role") as mock_analyze,
+            patch.object(self.story_processor.llm_handler, "synthesize_expert_analyses") as mock_synthesize,
+        ):
+            
+            # Setup content analysis mock
+            mock_analyze_content.return_value = {
+                "recommended_roles": ["system-architect", "lead-developer"],
+                "target_repositories": ["backend", "frontend"],
+                "complexity": "medium",
+                "themes": ["user-interface", "data-management"],
+                "reasoning": "Multi-repository feature with UI and data components"
+            }
+            
+            # Mock repository context with specific technical details
+            mock_backend_context = RepositoryContext(
+                repository="wtfzdotnet/recipeer",
+                repo_type="backend",
+                description="FastAPI backend with PostgreSQL",
+                structure={"src": ["main.py", "models.py"]},
+                key_files=[
+                    FileContext(
+                        repository="wtfzdotnet/recipeer",
+                        path="requirements.txt",
+                        content="fastapi==0.68.0\npsycopg2==2.9.1\npytest==6.2.0",
+                        file_type=".txt",
+                        language="text",
+                        size=100,
+                        importance_score=0.7
+                    )
+                ],
+                languages={"python": 1.0},
+                dependencies=["fastapi", "psycopg2", "pytest"],
+                file_count=15
+            )
+            
+            mock_frontend_context = RepositoryContext(
+                repository="wtfzdotnet/recipes-frontend",
+                repo_type="frontend",
+                description="React frontend with Material-UI",
+                structure={"src": ["App.js", "components"]},
+                key_files=[
+                    FileContext(
+                        repository="wtfzdotnet/recipes-frontend",
+                        path="package.json",
+                        content='{"dependencies": {"react": "^17.0.0", "@material-ui/core": "^4.12.0", "jest": "^26.0.0"}}',
+                        file_type=".json",
+                        language="json",
+                        size=200,
+                        importance_score=0.8
+                    )
+                ],
+                languages={"javascript": 0.9, "css": 0.1},
+                dependencies=["react", "@material-ui/core", "jest"],
+                file_count=25
+            )
+            
+            mock_get_repo_context.side_effect = [mock_backend_context, mock_frontend_context]
+            
+            # Mock expert analysis that should include repository-specific details
+            mock_analyze.return_value = MagicMock(
+                content="""
+                ## Repository-Specific Analysis
+                
+                **Backend (FastAPI + PostgreSQL):**
+                - Implement FastAPI endpoints with proper typing
+                - Create PostgreSQL schema with proper constraints
+                - Use pytest for comprehensive testing
+                
+                **Frontend (React + Material-UI):**
+                - Create React components using Material-UI design system
+                - Implement proper state management with hooks
+                - Write Jest tests for component behavior
+                
+                **Acceptance Criteria:**
+                - [ ] Backend API endpoints follow FastAPI patterns
+                - [ ] Frontend components use Material-UI components
+                - [ ] Database operations use PostgreSQL features
+                - [ ] Testing covers both pytest and Jest frameworks
+                """,
+                model="test",
+                provider="test",
+                usage={}
+            )
+            
+            mock_synthesize.return_value = MagicMock(
+                content="Synthesized analysis with repository-specific technical details and framework-specific recommendations",
+                model="test",
+                provider="test",
+                usage={}
+            )
+
+            async def run_test():
+                story_request = StoryRequest(
+                    content="As a user, I want to manage my profile so that I can update my personal information",
+                    target_repositories=["backend", "frontend"]
+                )
+                
+                result = await self.story_processor.process_story(story_request)
+                
+                # Verify that repository contexts were gathered and used
+                self.assertGreaterEqual(mock_get_repo_context.call_count, 2)
+                
+                # Verify metadata includes repository-specific context
+                self.assertIn("repository_contexts", result.metadata)
+                repo_contexts = result.metadata["repository_contexts"]
+                self.assertEqual(len(repo_contexts), 2)
+                
+                # Verify backend context
+                backend_ctx = next(ctx for ctx in repo_contexts if ctx["repo_type"] == "backend")
+                self.assertIn("python", backend_ctx.get("languages", {}))
+                
+                # Verify frontend context  
+                frontend_ctx = next(ctx for ctx in repo_contexts if ctx["repo_type"] == "frontend")
+                self.assertIn("javascript", frontend_ctx.get("languages", {}))
+                
+                # Verify that analysis includes framework-specific details
+                backend_analysis = next(
+                    (a for a in result.expert_analyses if "fastapi" in a.analysis.lower()),
+                    None
+                )
+                self.assertIsNotNone(backend_analysis)
+                self.assertIn("FastAPI", backend_analysis.analysis)
+                self.assertIn("PostgreSQL", backend_analysis.analysis)
+
+            asyncio.run(run_test())
+
+
 if __name__ == "__main__":
     unittest.main()

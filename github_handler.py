@@ -982,7 +982,7 @@ class GitHubHandler:
         try:
             # Create notification message
             notification_parts = [
-                f"🤖 **Automated Assignment**",
+                "🤖 **Automated Assignment**",
                 "",
                 f"This issue has been automatically assigned to @{assignee}.",
                 f"**Reason**: {assignment_reason}",
@@ -995,12 +995,14 @@ class GitHubHandler:
                 for key, value in additional_context.items():
                     notification_parts.append(f"- **{key}**: {value}")
 
-            notification_parts.extend([
-                "",
-                "---",
-                "*This assignment was made by the Storyteller automation system.*",
-                "*To override this assignment, update the assignee manually.*"
-            ])
+            notification_parts.extend(
+                [
+                    "",
+                    "---",
+                    "*This assignment was made by the Storyteller automation system.*",
+                    "*To override this assignment, update the assignee manually.*",
+                ]
+            )
 
             notification_message = "\n".join(notification_parts)
 

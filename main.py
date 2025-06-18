@@ -590,9 +590,9 @@ def process_assignment(
                         f"[green]✓[/green] Story {story_id} assigned to {result.data['assignee']}"
                     )
                     console.print(f"[blue]Reason:[/blue] {result.data['explanation']}")
-                    
+
                     if result.data.get("metadata"):
-                        console.print(f"[blue]Details:[/blue]")
+                        console.print("[blue]Details:[/blue]")
                         for key, value in result.data["metadata"].items():
                             console.print(f"  • {key}: {value}")
                 else:
@@ -615,7 +615,9 @@ def process_assignment(
 
 @story_app.command("assignment-queue")
 def show_assignment_queue(
-    limit: int = typer.Option(20, "--limit", "-l", help="Maximum number of items to show"),
+    limit: int = typer.Option(
+        20, "--limit", "-l", help="Maximum number of items to show"
+    ),
     debug: bool = typer.Option(False, "--debug", help="Enable debug logging"),
 ):
     """Show the current assignment queue in chronological order."""
@@ -633,17 +635,17 @@ def show_assignment_queue(
             statistics = result.data["statistics"]
 
             console.print(f"[green]✓[/green] Assignment Queue ({len(queue)} items)")
-            
+
             # Show statistics
             stats_table = Table(title="Assignment Statistics")
             stats_table.add_column("Metric", style="cyan")
             stats_table.add_column("Value", justify="right")
-            
+
             stats_table.add_row("Total Processed", str(statistics["total_processed"]))
             stats_table.add_row("Successfully Assigned", str(statistics["assigned"]))
             stats_table.add_row("Assignment Rate", f"{statistics['assignment_rate']}%")
             stats_table.add_row("Current Workload", str(statistics["current_workload"]))
-            
+
             console.print(stats_table)
 
             if queue:
@@ -663,9 +665,11 @@ def show_assignment_queue(
                     )
 
                 console.print(queue_table)
-                
+
                 if len(queue) > limit:
-                    console.print(f"[yellow]... and {len(queue) - limit} more items[/yellow]")
+                    console.print(
+                        f"[yellow]... and {len(queue) - limit} more items[/yellow]"
+                    )
             else:
                 console.print("[yellow]No assignments in queue[/yellow]")
 
@@ -724,7 +728,7 @@ def show_assignment_statistics(
                     reason_table.add_row(
                         reason.replace("_", " ").title(),
                         str(count),
-                        f"{percentage:.1f}%"
+                        f"{percentage:.1f}%",
                     )
 
                 console.print(reason_table)

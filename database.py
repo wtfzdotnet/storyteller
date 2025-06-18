@@ -7,7 +7,10 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
 
 from models import (
+    Conversation,
+    ConversationParticipant,
     Epic,
+    Message,
     StoryHierarchy,
     StoryStatus,
     StoryType,
@@ -130,7 +133,82 @@ class DatabaseManager:
         """
         )
 
+        # Create conversation-related tables
+        self.create_conversation_schema(conn)
+
         conn.commit()
+
+    def create_conversation_schema(self, conn: sqlite3.Connection):
+        """Create database schema for cross-repository conversations."""
+
+        # Conversations table
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS conversations (
+                id TEXT PRIMARY KEY,
+                title TEXT NOT NULL,
+                description TEXT DEFAULT '',
+                repositories TEXT DEFAULT '[]',
+                status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'resolved', 'archived')),
+                decision_summary TEXT,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                metadata TEXT DEFAULT '{}'
+            )
+        """
+        )
+
+        # Conversation participants table
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS conversation_participants (
+                id TEXT PRIMARY KEY,
+                conversation_id TEXT NOT NULL,
+                name TEXT NOT NULL,
+                role TEXT NOT NULL,
+                repository TEXT,
+                metadata TEXT DEFAULT '{}',
+                
+                FOREIGN KEY (conversation_id) REFERENCES conversations (id) ON DELETE CASCADE
+            )
+        """
+        )
+
+        # Messages table
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS conversation_messages (
+                id TEXT PRIMARY KEY,
+                conversation_id TEXT NOT NULL,
+                participant_id TEXT NOT NULL,
+                content TEXT NOT NULL,
+                message_type TEXT NOT NULL DEFAULT 'text' CHECK (message_type IN ('text', 'system', 'decision', 'context_share')),
+                repository_context TEXT,
+                created_at TEXT NOT NULL,
+                metadata TEXT DEFAULT '{}',
+                
+                FOREIGN KEY (conversation_id) REFERENCES conversations (id) ON DELETE CASCADE,
+                FOREIGN KEY (participant_id) REFERENCES conversation_participants (id) ON DELETE CASCADE
+            )
+        """
+        )
+
+        # Indexes for conversation queries
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_conversations_status ON conversations (status)"
+        )
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_participants_conversation ON conversation_participants (conversation_id)"
+        )
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_messages_conversation ON conversation_messages (conversation_id)"
+        )
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_messages_participant ON conversation_messages (participant_id)"
+        )
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_messages_repository ON conversation_messages (repository_context)"
+        )
 
     def save_story(self, story: Union[Epic, UserStory, SubStory]) -> str:
         """Save a story to the database."""
@@ -620,6 +698,151 @@ class DatabaseManager:
         else:
             raise ValueError(f"Unknown story type: {story_type}")
 
+    # Conversation management methods
+
+    def save_conversation(self, conversation: Conversation) -> str:
+        """Save a conversation to the database."""
+        with self.get_connection() as conn:
+            # Save conversation
+            conv_data = conversation.to_dict()
+            conv_data["updated_at"] = datetime.now(timezone.utc).isoformat()
+
+            conv_columns = ", ".join(conv_data.keys())
+            conv_placeholders = ", ".join(["?" for _ in conv_data])
+
+            conn.execute(
+                f"INSERT OR REPLACE INTO conversations ({conv_columns}) VALUES ({conv_placeholders})",
+                list(conv_data.values()),
+            )
+
+            # Save participants
+            for participant in conversation.participants:
+                part_data = participant.to_dict()
+                part_data["conversation_id"] = conversation.id
+
+                part_columns = ", ".join(part_data.keys())
+                part_placeholders = ", ".join(["?" for _ in part_data])
+
+                conn.execute(
+                    f"INSERT OR REPLACE INTO conversation_participants ({part_columns}) VALUES ({part_placeholders})",
+                    list(part_data.values()),
+                )
+
+            # Save messages
+            for message in conversation.messages:
+                msg_data = message.to_dict()
+
+                msg_columns = ", ".join(msg_data.keys())
+                msg_placeholders = ", ".join(["?" for _ in msg_data])
+
+                conn.execute(
+                    f"INSERT OR REPLACE INTO conversation_messages ({msg_columns}) VALUES ({msg_placeholders})",
+                    list(msg_data.values()),
+                )
+
+            return conversation.id
+
+    def get_conversation(self, conversation_id: str) -> Optional[Conversation]:
+        """Retrieve a conversation by ID with all participants and messages."""
+        with self.get_connection() as conn:
+            # Get conversation
+            cursor = conn.execute(
+                "SELECT * FROM conversations WHERE id = ?", (conversation_id,)
+            )
+            conv_row = cursor.fetchone()
+
+            if not conv_row:
+                return None
+
+            # Get participants
+            cursor = conn.execute(
+                "SELECT * FROM conversation_participants WHERE conversation_id = ?",
+                (conversation_id,),
+            )
+            participants = []
+            for part_row in cursor.fetchall():
+                participant = ConversationParticipant(
+                    id=part_row["id"],
+                    name=part_row["name"],
+                    role=part_row["role"],
+                    repository=part_row["repository"],
+                    metadata=json.loads(part_row["metadata"] or "{}"),
+                )
+                participants.append(participant)
+
+            # Get messages
+            cursor = conn.execute(
+                "SELECT * FROM conversation_messages WHERE conversation_id = ? ORDER BY created_at",
+                (conversation_id,),
+            )
+            messages = []
+            for msg_row in cursor.fetchall():
+                message = Message(
+                    id=msg_row["id"],
+                    conversation_id=msg_row["conversation_id"],
+                    participant_id=msg_row["participant_id"],
+                    content=msg_row["content"],
+                    message_type=msg_row["message_type"],
+                    repository_context=msg_row["repository_context"],
+                    created_at=datetime.fromisoformat(msg_row["created_at"]),
+                    metadata=json.loads(msg_row["metadata"] or "{}"),
+                )
+                messages.append(message)
+
+            # Create conversation object
+            conversation = Conversation(
+                id=conv_row["id"],
+                title=conv_row["title"],
+                description=conv_row["description"],
+                repositories=json.loads(conv_row["repositories"] or "[]"),
+                participants=participants,
+                messages=messages,
+                status=conv_row["status"],
+                decision_summary=conv_row["decision_summary"],
+                created_at=datetime.fromisoformat(conv_row["created_at"]),
+                updated_at=datetime.fromisoformat(conv_row["updated_at"]),
+                metadata=json.loads(conv_row["metadata"] or "{}"),
+            )
+
+            return conversation
+
+    def list_conversations(
+        self, repository: Optional[str] = None, status: Optional[str] = None
+    ) -> List[Conversation]:
+        """List conversations, optionally filtered by repository or status."""
+        with self.get_connection() as conn:
+            query = "SELECT id FROM conversations"
+            params = []
+            conditions = []
+
+            if status:
+                conditions.append("status = ?")
+                params.append(status)
+
+            if repository:
+                conditions.append("repositories LIKE ?")
+                params.append(f'%"{repository}"%')
+
+            if conditions:
+                query += " WHERE " + " AND ".join(conditions)
+
+            query += " ORDER BY updated_at DESC"
+
+            cursor = conn.execute(query, params)
+            conversation_ids = [row[0] for row in cursor.fetchall()]
+
+            conversations = []
+            for conv_id in conversation_ids:
+                conv = self.get_conversation(conv_id)
+                if conv:
+                    conversations.append(conv)
+
+            return conversations
+
+    def get_conversations_by_repository(self, repository: str) -> List[Conversation]:
+        """Get all conversations involving a specific repository."""
+        return self.list_conversations(repository=repository)
+
 
 def run_migrations(db_path: str = "storyteller.db"):
     """Run database migrations to set up the schema."""
@@ -632,7 +855,14 @@ def run_migrations(db_path: str = "storyteller.db"):
         cursor = conn.execute("SELECT name FROM sqlite_master WHERE type='table'")
         tables = [row[0] for row in cursor.fetchall()]
 
-        expected_tables = ["stories", "story_relationships", "github_issues"]
+        expected_tables = [
+            "stories",
+            "story_relationships",
+            "github_issues",
+            "conversations",
+            "conversation_participants",
+            "conversation_messages",
+        ]
         missing_tables = [t for t in expected_tables if t not in tables]
 
         if missing_tables:

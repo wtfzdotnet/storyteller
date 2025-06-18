@@ -186,6 +186,241 @@ class StoryHierarchy:
             "percentage": round(percentage, 1),
         }
 
+    def get_cross_repository_progress(self) -> Dict[str, Any]:
+        """Calculate progress aggregated across all target repositories."""
+        repository_progress = {}
+
+        # Aggregate repositories from epic and user stories
+        all_repositories = set(self.epic.target_repositories)
+        for user_story in self.user_stories:
+            all_repositories.update(user_story.target_repositories)
+
+        # Add repositories from sub-stories
+        for sub_story_list in self.sub_stories.values():
+            for sub_story in sub_story_list:
+                if sub_story.target_repository:
+                    all_repositories.add(sub_story.target_repository)
+
+        # Calculate progress per repository
+        for repository in all_repositories:
+            repo_data = self._calculate_repository_progress(repository)
+            if repo_data["total"] > 0:  # Only include repos with actual work
+                repository_progress[repository] = repo_data
+
+        # Calculate overall cross-repository summary
+        total_items = sum(repo["total"] for repo in repository_progress.values())
+        completed_items = sum(
+            repo["completed"] for repo in repository_progress.values()
+        )
+        overall_percentage = (
+            (completed_items / total_items * 100) if total_items > 0 else 0
+        )
+
+        return {
+            "overall": {
+                "total": total_items,
+                "completed": completed_items,
+                "percentage": round(overall_percentage, 1),
+                "repositories_involved": len(repository_progress),
+            },
+            "by_repository": repository_progress,
+        }
+
+    def _calculate_repository_progress(self, repository: str) -> Dict[str, Any]:
+        """Calculate progress for a specific repository."""
+        total = 0
+        completed = 0
+
+        # Count user stories targeting this repository
+        for user_story in self.user_stories:
+            if repository in user_story.target_repositories:
+                total += 1
+                if user_story.status == StoryStatus.DONE:
+                    completed += 1
+
+        # Count sub-stories targeting this repository
+        for sub_story_list in self.sub_stories.values():
+            for sub_story in sub_story_list:
+                if sub_story.target_repository == repository:
+                    total += 1
+                    if sub_story.status == StoryStatus.DONE:
+                        completed += 1
+
+        percentage = (completed / total * 100) if total > 0 else 0
+
+        return {
+            "total": total,
+            "completed": completed,
+            "percentage": round(percentage, 1),
+            "status": self._get_repository_status(completed, total),
+        }
+
+    def _get_repository_status(self, completed: int, total: int) -> str:
+        """Determine repository status based on completion."""
+        if total == 0:
+            return "not_started"
+        elif completed == 0:
+            return "not_started"
+        elif completed == total:
+            return "completed"
+        else:
+            return "in_progress"
+
+    def get_repository_specific_metrics(self) -> Dict[str, Any]:
+        """Get detailed metrics for each repository involved in the epic."""
+        metrics = {}
+
+        # Get all repositories involved
+        all_repositories = set(self.epic.target_repositories)
+        for user_story in self.user_stories:
+            all_repositories.update(user_story.target_repositories)
+
+        for sub_story_list in self.sub_stories.values():
+            for sub_story in sub_story_list:
+                if sub_story.target_repository:
+                    all_repositories.add(sub_story.target_repository)
+
+        # Calculate detailed metrics per repository
+        for repository in all_repositories:
+            metrics[repository] = self._get_detailed_repository_metrics(repository)
+
+        return metrics
+
+    def _get_detailed_repository_metrics(self, repository: str) -> Dict[str, Any]:
+        """Get detailed metrics for a specific repository."""
+        user_stories_in_repo = []
+        sub_stories_in_repo = []
+
+        # Collect user stories for this repository
+        for user_story in self.user_stories:
+            if repository in user_story.target_repositories:
+                user_stories_in_repo.append(user_story)
+
+        # Collect sub-stories for this repository
+        for sub_story_list in self.sub_stories.values():
+            for sub_story in sub_story_list:
+                if sub_story.target_repository == repository:
+                    sub_stories_in_repo.append(sub_story)
+
+        # Calculate status distribution
+        status_distribution = self._calculate_status_distribution(
+            user_stories_in_repo + sub_stories_in_repo
+        )
+
+        # Calculate estimated hours (for sub-stories that have it)
+        total_estimated_hours = sum(
+            sub_story.estimated_hours or 0
+            for sub_story in sub_stories_in_repo
+            if sub_story.estimated_hours
+        )
+
+        # Calculate department breakdown for sub-stories
+        department_breakdown = {}
+        for sub_story in sub_stories_in_repo:
+            dept = sub_story.department or "unassigned"
+            if dept not in department_breakdown:
+                department_breakdown[dept] = {"total": 0, "completed": 0}
+            department_breakdown[dept]["total"] += 1
+            if sub_story.status == StoryStatus.DONE:
+                department_breakdown[dept]["completed"] += 1
+
+        return {
+            "user_stories": {
+                "total": len(user_stories_in_repo),
+                "completed": sum(
+                    1 for us in user_stories_in_repo if us.status == StoryStatus.DONE
+                ),
+            },
+            "sub_stories": {
+                "total": len(sub_stories_in_repo),
+                "completed": sum(
+                    1 for ss in sub_stories_in_repo if ss.status == StoryStatus.DONE
+                ),
+            },
+            "status_distribution": status_distribution,
+            "estimated_hours": total_estimated_hours,
+            "department_breakdown": department_breakdown,
+        }
+
+    def _calculate_status_distribution(
+        self, stories: List[BaseStory]
+    ) -> Dict[str, int]:
+        """Calculate the distribution of statuses across a list of stories."""
+        distribution = {}
+        for story in stories:
+            status = story.status.value
+            distribution[status] = distribution.get(status, 0) + 1
+        return distribution
+
+
+@dataclass
+class CrossRepositoryProgressSnapshot:
+    """Snapshot of progress across multiple repositories for an epic."""
+
+    epic_id: str
+    epic_title: str
+    timestamp: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    overall_progress: Dict[str, Any] = field(default_factory=dict)
+    repository_progress: Dict[str, Dict[str, Any]] = field(default_factory=dict)
+    repository_metrics: Dict[str, Dict[str, Any]] = field(default_factory=dict)
+    real_time_updates_enabled: bool = True
+    last_updated_by: Optional[str] = None
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert progress snapshot to dictionary."""
+        return {
+            "epic_id": self.epic_id,
+            "epic_title": self.epic_title,
+            "timestamp": self.timestamp.isoformat(),
+            "overall_progress": self.overall_progress,
+            "repository_progress": self.repository_progress,
+            "repository_metrics": self.repository_metrics,
+            "real_time_updates_enabled": self.real_time_updates_enabled,
+            "last_updated_by": self.last_updated_by,
+        }
+
+    @classmethod
+    def from_story_hierarchy(
+        cls, hierarchy: StoryHierarchy
+    ) -> "CrossRepositoryProgressSnapshot":
+        """Create a progress snapshot from a story hierarchy."""
+        cross_repo_progress = hierarchy.get_cross_repository_progress()
+
+        return cls(
+            epic_id=hierarchy.epic.id,
+            epic_title=hierarchy.epic.title,
+            overall_progress=cross_repo_progress["overall"],
+            repository_progress=cross_repo_progress["by_repository"],
+            repository_metrics=hierarchy.get_repository_specific_metrics(),
+        )
+
+    def get_visualization_data(self) -> Dict[str, Any]:
+        """Get data formatted for progress visualization."""
+        return {
+            "epic": {
+                "id": self.epic_id,
+                "title": self.epic_title,
+                "overall_percentage": self.overall_progress.get("percentage", 0),
+            },
+            "repositories": [
+                {
+                    "name": repo_name,
+                    "progress": repo_data["percentage"],
+                    "status": repo_data["status"],
+                    "total_items": repo_data["total"],
+                    "completed_items": repo_data["completed"],
+                }
+                for repo_name, repo_data in self.repository_progress.items()
+            ],
+            "summary": {
+                "total_repositories": len(self.repository_progress),
+                "total_items": self.overall_progress.get("total", 0),
+                "completed_items": self.overall_progress.get("completed", 0),
+                "overall_percentage": self.overall_progress.get("percentage", 0),
+            },
+            "timestamp": self.timestamp.isoformat(),
+        }
+
 
 @dataclass
 class ConversationParticipant:

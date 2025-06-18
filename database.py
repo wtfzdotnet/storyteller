@@ -1,10 +1,13 @@
 """Database schema and migration system for hierarchical story management."""
 
 import json
+import logging
 import sqlite3
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
+
+logger = logging.getLogger(__name__)
 
 from models import (
     Conversation,
@@ -129,6 +132,30 @@ class DatabaseManager:
 
                 FOREIGN KEY (story_id) REFERENCES stories (id) ON DELETE CASCADE,
                 UNIQUE (story_id, repository_name)
+            )
+        """
+        )
+
+        # Status transition audit table for webhook events
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS status_transitions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                story_id TEXT NOT NULL,
+                old_status TEXT,
+                new_status TEXT NOT NULL,
+                trigger_type TEXT NOT NULL CHECK (trigger_type IN ('manual', 'webhook', 'automation')),
+                trigger_source TEXT,
+                event_type TEXT,
+                repository_name TEXT,
+                pr_number INTEGER,
+                issue_number INTEGER,
+                commit_sha TEXT,
+                user_id TEXT,
+                timestamp TEXT NOT NULL,
+                metadata TEXT DEFAULT '{}',
+                
+                FOREIGN KEY (story_id) REFERENCES stories (id) ON DELETE CASCADE
             )
         """
         )
@@ -842,6 +869,98 @@ class DatabaseManager:
     def get_conversations_by_repository(self, repository: str) -> List[Conversation]:
         """Get all conversations involving a specific repository."""
         return self.list_conversations(repository=repository)
+
+    def get_stories_by_github_issue(self, repository_name: str, issue_number: int) -> List[Union[Epic, UserStory, SubStory]]:
+        """Get stories linked to a specific GitHub issue."""
+        with self.get_connection() as conn:
+            cursor = conn.execute(
+                """
+                SELECT s.* FROM stories s
+                JOIN github_issues gi ON s.id = gi.story_id
+                WHERE gi.repository_name = ? AND gi.issue_number = ?
+                """,
+                (repository_name, issue_number),
+            )
+            
+            return [self._row_to_story(row) for row in cursor.fetchall()]
+
+    def log_status_transition(
+        self,
+        story_id: str,
+        old_status: Optional[str],
+        new_status: str,
+        trigger_type: str = "manual",
+        trigger_source: Optional[str] = None,
+        event_type: Optional[str] = None,
+        repository_name: Optional[str] = None,
+        pr_number: Optional[int] = None,
+        issue_number: Optional[int] = None,
+        commit_sha: Optional[str] = None,
+        user_id: Optional[str] = None,
+        metadata: Optional[Dict[str, Any]] = None
+    ) -> bool:
+        """Log a status transition to the audit trail."""
+        with self.get_connection() as conn:
+            try:
+                conn.execute(
+                    """
+                    INSERT INTO status_transitions (
+                        story_id, old_status, new_status, trigger_type, trigger_source,
+                        event_type, repository_name, pr_number, issue_number, commit_sha,
+                        user_id, timestamp, metadata
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        story_id,
+                        old_status,
+                        new_status,
+                        trigger_type,
+                        trigger_source,
+                        event_type,
+                        repository_name,
+                        pr_number,
+                        issue_number,
+                        commit_sha,
+                        user_id,
+                        datetime.now(timezone.utc).isoformat(),
+                        json.dumps(metadata or {})
+                    )
+                )
+                return True
+            except Exception as e:
+                logger.error(f"Failed to log status transition: {e}")
+                return False
+
+    def get_status_transitions(self, story_id: Optional[str] = None, limit: int = 100) -> List[Dict[str, Any]]:
+        """Get status transition history."""
+        with self.get_connection() as conn:
+            if story_id:
+                cursor = conn.execute(
+                    """
+                    SELECT * FROM status_transitions 
+                    WHERE story_id = ? 
+                    ORDER BY timestamp DESC 
+                    LIMIT ?
+                    """,
+                    (story_id, limit)
+                )
+            else:
+                cursor = conn.execute(
+                    """
+                    SELECT * FROM status_transitions 
+                    ORDER BY timestamp DESC 
+                    LIMIT ?
+                    """,
+                    (limit,)
+                )
+            
+            transitions = []
+            for row in cursor.fetchall():
+                transition = dict(row)
+                transition['metadata'] = json.loads(transition['metadata'] or '{}')
+                transitions.append(transition)
+            
+            return transitions
 
 
 def run_migrations(db_path: str = "storyteller.db"):

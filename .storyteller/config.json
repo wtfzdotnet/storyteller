@@ -32,5 +32,17 @@
   "story_workflow": {
     "create_subtickets": true,
     "respect_dependencies": true
+  },
+  "webhook_config": {
+    "enabled": true,
+    "status_mappings": {
+      "pull_request.opened": "in_progress",
+      "pull_request.ready_for_review": "review",
+      "pull_request.closed": null,
+      "issues.opened": "ready",
+      "issues.closed": "done",
+      "issues.reopened": "in_progress",
+      "push": null
+    }
   }
 }

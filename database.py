@@ -962,6 +962,29 @@ class DatabaseManager:
             
             return transitions
 
+    def create_github_issue_link(self, story_id: str, repository_name: str, issue_number: int, issue_url: str) -> bool:
+        """Create a link between a story and a GitHub issue."""
+        with self.get_connection() as conn:
+            try:
+                conn.execute(
+                    """
+                    INSERT OR REPLACE INTO github_issues (
+                        story_id, repository_name, issue_number, issue_url, created_at
+                    ) VALUES (?, ?, ?, ?, ?)
+                    """,
+                    (
+                        story_id,
+                        repository_name, 
+                        issue_number,
+                        issue_url,
+                        datetime.now(timezone.utc).isoformat()
+                    )
+                )
+                return True
+            except Exception as e:
+                logger.error(f"Failed to create GitHub issue link: {e}")
+                return False
+
 
 def run_migrations(db_path: str = "storyteller.db"):
     """Run database migrations to set up the schema."""

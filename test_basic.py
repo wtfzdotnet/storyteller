@@ -17,6 +17,8 @@ def test_imports():
             IntelligentFileSelector,
             RepositoryTypeDetector,
         )
+        from webhook_handler import WebhookHandler
+        from config import get_config
 
         # Test instantiation of basic classes
         participant = ConversationParticipant(name="Test", role="developer")
@@ -30,6 +32,11 @@ def test_imports():
 
         cache = ContextCache()
         assert cache is not None
+        
+        # Test webhook handler
+        config = get_config()
+        webhook_handler = WebhookHandler(config)
+        assert webhook_handler is not None
 
         print("✓ All core imports and basic instantiation work")
 

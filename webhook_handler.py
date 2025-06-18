@@ -93,8 +93,13 @@ class WebhookHandler:
         
         # Extract event information
         event_type = payload.get('action')
+        
+        # For push events, there's no action field - detect by presence of commits
+        if not event_type and 'commits' in payload:
+            event_type = 'push'
+        
         if not event_type:
-            logger.warning("Webhook payload missing 'action' field")
+            logger.warning("Webhook payload missing 'action' field and not a push event")
             return {"status": "ignored", "reason": "missing action"}
             
         # Get repository information
@@ -111,7 +116,7 @@ class WebhookHandler:
             event_key = f"pull_request.{event_type}"
         elif 'issue' in payload:
             event_key = f"issues.{event_type}"
-        elif 'commits' in payload:
+        elif event_type == 'push':
             event_key = "push"
             
         if not event_key:
@@ -147,7 +152,9 @@ class WebhookHandler:
         action = payload.get('action')
         
         # Find associated stories by PR number or issue references
-        story_ids = await self._find_stories_for_pr(pr_number, pr.get('body', ''), repo_name)
+        pr_title = pr.get('title', '')
+        pr_body = pr.get('body', '')
+        story_ids = await self._find_stories_for_pr(pr_number, f"{pr_title} {pr_body}", repo_name)
         
         if not story_ids:
             return {"status": "ignored", "reason": "no associated stories found"}
@@ -310,12 +317,14 @@ class WebhookHandler:
         import re
         
         # Match patterns like 'story_xxxxxxxx' or '#story_xxxxxxxx'
-        # Allow alphanumeric characters for story IDs
-        pattern = r'#?story_[a-zA-Z0-9]{8,}'
+        # Allow alphanumeric characters for story IDs (minimum 3 characters after underscore)
+        pattern = r'#?story_[a-zA-Z0-9]{3,}'
         matches = re.findall(pattern, text, re.IGNORECASE)
         
         # Clean up the matches (remove # prefix if present)
-        return [match.lstrip('#') for match in matches]
+        result = [match.lstrip('#') for match in matches]
+        logger.debug(f"Extracted story references from '{text}': {result}")
+        return result
 
     async def _log_transition(self, event_key: str, payload: Dict[str, Any], result: Dict[str, Any], repo_name: str):
         """Log status transition for audit trail."""

@@ -2,15 +2,15 @@
 
 import asyncio
 import os
-from unittest.mock import Mock, patch, MagicMock
+from unittest.mock import Mock, patch
+
+from config import Config
+from github_handler import GitHubHandler
+from models import ProjectData, ProjectFieldValue
 
 # Set dummy environment for testing
 os.environ["GITHUB_TOKEN"] = "test_token"
 os.environ["DEFAULT_LLM_PROVIDER"] = "github"
-
-from config import Config
-from github_handler import GitHubHandler
-from models import ProjectData, ProjectField, ProjectFieldValue
 
 
 class TestGitHubProjectsIntegration:

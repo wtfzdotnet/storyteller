@@ -837,6 +837,239 @@ def test_mcp_server(
     asyncio.run(_test_server())
 
 
+# Pipeline monitoring commands
+pipeline_app = typer.Typer(help="Pipeline monitoring and failure analysis commands")
+app.add_typer(pipeline_app, name="pipeline")
+
+
+@pipeline_app.command("dashboard")
+def get_pipeline_dashboard(
+    repository: Optional[str] = typer.Option(
+        None, "--repo", help="Repository to filter by"
+    ),
+    time_range: str = typer.Option(
+        "24h", "--time-range", help="Time range (e.g., 24h, 7d, 30d)"
+    ),
+    format: str = typer.Option("table", "--format", help="Output format: table, json"),
+    debug: bool = typer.Option(False, "--debug", help="Enable debug logging"),
+):
+    """Get pipeline monitoring dashboard data."""
+    setup_logging(debug)
+
+    with console.status("[bold green]Getting pipeline dashboard data..."):
+        workflow_processor = WorkflowProcessor()
+        result = workflow_processor.get_pipeline_dashboard_workflow(
+            repository=repository, time_range=time_range
+        )
+
+    if not result.success:
+        console.print(f"[red]Error: {result.message}[/red]")
+        if result.error:
+            console.print(f"[red]Details: {result.error}[/red]")
+        sys.exit(1)
+
+    if format == "json":
+        import json
+
+        console.print(json.dumps(result.data, indent=2))
+    else:
+        _display_dashboard_table(result.data)
+
+    console.print(f"[green]✓ Dashboard data retrieved for {time_range}[/green]")
+
+
+@pipeline_app.command("health")
+def get_pipeline_health(
+    repository: Optional[str] = typer.Option(
+        None, "--repo", help="Repository to filter by"
+    ),
+    debug: bool = typer.Option(False, "--debug", help="Enable debug logging"),
+):
+    """Get current pipeline health status."""
+    setup_logging(debug)
+
+    with console.status("[bold green]Getting pipeline health status..."):
+        workflow_processor = WorkflowProcessor()
+        result = workflow_processor.get_pipeline_health_workflow(repository=repository)
+
+    if not result.success:
+        console.print(f"[red]Error: {result.message}[/red]")
+        if result.error:
+            console.print(f"[red]Details: {result.error}[/red]")
+        sys.exit(1)
+
+    _display_health_status(result.data)
+    console.print("[green]✓ Health status retrieved[/green]")
+
+
+@pipeline_app.command("patterns")
+def analyze_pipeline_patterns(
+    days: int = typer.Option(30, "--days", help="Number of days to analyze"),
+    debug: bool = typer.Option(False, "--debug", help="Enable debug logging"),
+):
+    """Analyze pipeline failure patterns."""
+    setup_logging(debug)
+
+    with console.status(f"[bold green]Analyzing failure patterns for {days} days..."):
+        workflow_processor = WorkflowProcessor()
+        result = workflow_processor.analyze_pipeline_patterns_workflow(days=days)
+
+    if not result.success:
+        console.print(f"[red]Error: {result.message}[/red]")
+        if result.error:
+            console.print(f"[red]Details: {result.error}[/red]")
+        sys.exit(1)
+
+    _display_patterns_table(result.data)
+    console.print(f"[green]✓ {result.message}[/green]")
+
+
+@pipeline_app.command("export")
+def export_pipeline_data(
+    repository: Optional[str] = typer.Option(
+        None, "--repo", help="Repository to filter by"
+    ),
+    time_range: str = typer.Option(
+        "7d", "--time-range", help="Time range (e.g., 24h, 7d, 30d)"
+    ),
+    output_file: Optional[str] = typer.Option(
+        None, "--output", help="Output file path"
+    ),
+    debug: bool = typer.Option(False, "--debug", help="Enable debug logging"),
+):
+    """Export pipeline monitoring data."""
+    setup_logging(debug)
+
+    with console.status("[bold green]Exporting pipeline data..."):
+        workflow_processor = WorkflowProcessor()
+        result = workflow_processor.export_pipeline_data_workflow(
+            repository=repository, time_range=time_range, format="json"
+        )
+
+    if not result.success:
+        console.print(f"[red]Error: {result.message}[/red]")
+        if result.error:
+            console.print(f"[red]Details: {result.error}[/red]")
+        sys.exit(1)
+
+    import json
+
+    if output_file:
+        with open(output_file, "w") as f:
+            json.dump(result.data, f, indent=2)
+        console.print(f"[green]✓ Data exported to {output_file}[/green]")
+    else:
+        console.print(json.dumps(result.data, indent=2))
+
+    console.print(f"[green]✓ {result.message}[/green]")
+
+
+def _display_dashboard_table(data: dict):
+    """Display dashboard data as formatted tables."""
+    summary = data.get("summary", {})
+
+    # Summary table
+    summary_table = Table(title="Pipeline Dashboard Summary")
+    summary_table.add_column("Metric", style="cyan")
+    summary_table.add_column("Value", style="green")
+
+    summary_table.add_row("Total Failures", str(summary.get("total_failures", 0)))
+    summary_table.add_row("Time Period", f"{summary.get('time_period_days', 0)} days")
+    summary_table.add_row("Last Updated", summary.get("last_updated", "Unknown"))
+
+    console.print(summary_table)
+
+    # Health metrics
+    health_metrics = data.get("health_metrics", {})
+    if health_metrics:
+        health_table = Table(title="Health Metrics")
+        health_table.add_column("Metric", style="cyan")
+        health_table.add_column("Value", style="green")
+
+        health_table.add_row(
+            "Success Rate", f"{health_metrics.get('success_rate', 0)}%"
+        )
+        health_table.add_row("Total Runs", str(health_metrics.get("total_runs", 0)))
+        health_table.add_row("Failed Runs", str(health_metrics.get("failed_runs", 0)))
+        health_table.add_row(
+            "Health Score", health_metrics.get("health_score", "unknown")
+        )
+
+        console.print(health_table)
+
+    # Failures by category
+    by_category = data.get("by_category", {})
+    if by_category:
+        category_table = Table(title="Failures by Category")
+        category_table.add_column("Category", style="cyan")
+        category_table.add_column("Count", style="red")
+
+        for category, count in by_category.items():
+            category_table.add_row(category.title(), str(count))
+
+        console.print(category_table)
+
+
+def _display_health_status(data: dict):
+    """Display health status information."""
+    live_status = data.get("live_status", {})
+    health_metrics = data.get("health_metrics", {})
+
+    # Live status
+    status_table = Table(title="Live Pipeline Status")
+    status_table.add_column("Metric", style="cyan")
+    status_table.add_column("Value", style="green")
+
+    status_table.add_row("Active Pipelines", str(live_status.get("total_active", 0)))
+    status_table.add_row("Recent Failures", str(live_status.get("recent_failures", 0)))
+    status_table.add_row("Timestamp", live_status.get("timestamp", "Unknown"))
+
+    console.print(status_table)
+
+    # Health score with color coding
+    health_score = health_metrics.get("health_score", "unknown")
+    score_color = {
+        "excellent": "green",
+        "good": "yellow",
+        "fair": "orange",
+        "poor": "red",
+    }.get(health_score, "white")
+
+    console.print(
+        f"Overall Health: [{score_color}]{health_score.title()}[/{score_color}]"
+    )
+
+
+def _display_patterns_table(data: dict):
+    """Display failure patterns table."""
+    patterns = data.get("patterns", [])
+
+    if not patterns:
+        console.print(
+            "[yellow]No failure patterns found in the analyzed period.[/yellow]"
+        )
+        return
+
+    patterns_table = Table(
+        title=f"Failure Patterns ({data.get('total_patterns', 0)} found)"
+    )
+    patterns_table.add_column("Category", style="cyan")
+    patterns_table.add_column("Description", style="white", max_width=50)
+    patterns_table.add_column("Count", style="red")
+    patterns_table.add_column("Repositories", style="green", max_width=30)
+
+    for pattern in patterns:
+        repos = ", ".join(pattern.get("repositories", []))
+        patterns_table.add_row(
+            pattern.get("category", "").title(),
+            pattern.get("description", ""),
+            str(pattern.get("failure_count", 0)),
+            repos,
+        )
+
+    console.print(patterns_table)
+
+
 # API server commands
 api_app = typer.Typer(help="API server commands")
 app.add_typer(api_app, name="api")

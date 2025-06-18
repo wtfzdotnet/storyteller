@@ -155,7 +155,7 @@ class GitHubHandler:
             )
             raise Exception(f"GitHub API error: {e}")
 
-    async def list_issues(
+    def list_issues(
         self,
         repository_name: str,
         state: str = "open",

@@ -1,4 +1,4 @@
-"""GitHub webhook handler for automatic story status transitions."""
+"""GitHub webhook handler for automatic story status transitions and pipeline monitoring."""
 
 import hashlib
 import hmac
@@ -10,16 +10,18 @@ from typing import Any, Dict, List, Optional
 from config import Config
 from database import DatabaseManager
 from models import StoryStatus
+from pipeline_monitor import PipelineMonitor
 
 logger = logging.getLogger(__name__)
 
 
 class WebhookHandler:
-    """Handles GitHub webhook events for automatic story status transitions."""
+    """Handles GitHub webhook events for automatic story status transitions and pipeline monitoring."""
 
     def __init__(self, config: Config):
         self.config = config
         self.database = DatabaseManager()
+        self.pipeline_monitor = PipelineMonitor(config)
 
         # Default status transition rules
         self.status_rules = {
@@ -33,6 +35,10 @@ class WebhookHandler:
             "issues.reopened": StoryStatus.IN_PROGRESS,
             # Push events
             "push": None,  # Custom logic based on commits
+            # Workflow events
+            "workflow_run.requested": None,  # Pipeline started
+            "workflow_run.in_progress": None,  # Pipeline running
+            "workflow_run.completed": None,  # Pipeline completed (check status)
         }
 
         # Load custom status mappings from config
@@ -118,6 +124,8 @@ class WebhookHandler:
             event_key = f"pull_request.{event_type}"
         elif "issue" in payload:
             event_key = f"issues.{event_type}"
+        elif "workflow_run" in payload:
+            event_key = f"workflow_run.{event_type}"
         elif event_type == "push":
             event_key = "push"
 
@@ -146,6 +154,8 @@ class WebhookHandler:
             return await self._handle_pull_request_event(event_key, payload, repo_name)
         elif event_key.startswith("issues"):
             return await self._handle_issue_event(event_key, payload, repo_name)
+        elif event_key.startswith("workflow_run"):
+            return await self._handle_workflow_run_event(event_key, payload, repo_name)
         elif event_key == "push":
             return await self._handle_push_event(payload, repo_name)
         else:
@@ -328,6 +338,171 @@ class WebhookHandler:
             "updated_stories": updated_stories,
             "commits_processed": len(commits),
         }
+
+    async def _handle_workflow_run_event(
+        self, event_key: str, payload: Dict[str, Any], repo_name: str
+    ) -> Dict[str, Any]:
+        """Handle GitHub workflow run events for pipeline monitoring."""
+        try:
+            # Process the pipeline event using the pipeline monitor
+            pipeline_run = await self.pipeline_monitor.process_pipeline_event(payload)
+
+            if not pipeline_run:
+                return {
+                    "status": "ignored",
+                    "reason": "failed to process pipeline event",
+                }
+
+            # If there are failures, check if we need to trigger agent notification
+            notification_result = None
+            if pipeline_run.failures:
+                notification_result = await self._handle_pipeline_failures(
+                    pipeline_run, repo_name
+                )
+
+            return {
+                "status": "processed",
+                "event": event_key,
+                "pipeline_id": pipeline_run.id,
+                "pipeline_status": pipeline_run.status.value,
+                "failure_count": len(pipeline_run.failures),
+                "notification_sent": notification_result is not None,
+            }
+
+        except Exception as e:
+            logger.error(f"Failed to handle workflow run event: {e}")
+            return {"status": "error", "reason": str(e)}
+
+    async def _handle_pipeline_failures(
+        self, pipeline_run, repo_name: str
+    ) -> Optional[Dict[str, Any]]:
+        """Handle pipeline failures and trigger agent notifications if needed."""
+        try:
+            # Check if we should notify the agent based on failure patterns
+            should_notify = self._should_notify_agent(pipeline_run)
+
+            if should_notify:
+                # Create notification comment for the agent
+                notification = self._create_failure_notification(pipeline_run)
+
+                # Try to find related issues to comment on
+                related_issues = await self._find_related_issues(
+                    pipeline_run, repo_name
+                )
+
+                if related_issues:
+                    for issue_number in related_issues:
+                        try:
+                            # Add comment mentioning @copilot
+                            await self.pipeline_monitor.github_handler.add_issue_comment(
+                                repository_name=repo_name,
+                                issue_number=issue_number,
+                                comment=notification,
+                            )
+                            logger.info(
+                                f"Added pipeline failure notification to issue #{issue_number}"
+                            )
+                        except Exception as e:
+                            logger.error(
+                                f"Failed to add comment to issue #{issue_number}: {e}"
+                            )
+
+                return {
+                    "notification_sent": True,
+                    "issues_notified": related_issues,
+                    "failure_count": len(pipeline_run.failures),
+                }
+
+            return None
+
+        except Exception as e:
+            logger.error(f"Failed to handle pipeline failures: {e}")
+            return None
+
+    def _should_notify_agent(self, pipeline_run) -> bool:
+        """Determine if the agent should be notified about failures."""
+        # Basic rules for notification
+        if not pipeline_run.failures:
+            return False
+
+        # Check if any failures are high or critical severity
+        high_severity_failures = [
+            f for f in pipeline_run.failures if f.severity.value in ["high", "critical"]
+        ]
+
+        if high_severity_failures:
+            return True
+
+        # Check retry count - notify if we've tried multiple times
+        repeated_failures = [f for f in pipeline_run.failures if f.retry_count >= 2]
+
+        return len(repeated_failures) > 0
+
+    def _create_failure_notification(self, pipeline_run) -> str:
+        """Create a notification message for pipeline failures."""
+        failure_summary = {}
+        for failure in pipeline_run.failures:
+            category = failure.category.value
+            if category not in failure_summary:
+                failure_summary[category] = []
+            failure_summary[category].append(failure.failure_message[:100])
+
+        notification = f"""## 🚨 Pipeline Failure Detected
+
+**Repository:** {pipeline_run.repository}
+**Branch:** {pipeline_run.branch}
+**Commit:** {pipeline_run.commit_sha[:8]}
+**Workflow:** {pipeline_run.workflow_name}
+
+### Failure Summary:
+"""
+
+        for category, messages in failure_summary.items():
+            notification += f"\n**{category.title()} Issues:**\n"
+            for msg in messages:
+                notification += f"- {msg}\n"
+
+        notification += f"""
+### Recommended Actions:
+"""
+
+        # Add category-specific suggestions
+        for failure in pipeline_run.failures:
+            suggestions = self.pipeline_monitor._generate_resolution_suggestions(
+                failure.category
+            )
+            if suggestions:
+                notification += f"\n**For {failure.category.value} issues:**\n"
+                for suggestion in suggestions[:2]:  # Limit to top 2 suggestions
+                    notification += f"- {suggestion}\n"
+
+        notification += f"""
+Failure Count: {len(pipeline_run.failures)}
+Time: {pipeline_run.started_at.strftime('%Y-%m-%d %H:%M:%S UTC')}
+
+@copilot Please investigate and resolve these pipeline failures.
+"""
+
+        return notification
+
+    async def _find_related_issues(self, pipeline_run, repo_name: str) -> List[int]:
+        """Find GitHub issues related to the failed pipeline."""
+        try:
+            # Look for open issues in the repository
+            issues = self.pipeline_monitor.github_handler.list_issues(
+                repository_name=repo_name, state="open", limit=10
+            )
+
+            # For now, just return the most recent issue if any
+            # In the future, we could implement more sophisticated matching
+            if issues:
+                return [issues[0].number]
+
+            return []
+
+        except Exception as e:
+            logger.error(f"Failed to find related issues: {e}")
+            return []
 
     async def _find_stories_for_pr(
         self, pr_number: int, pr_body: str, repo_name: str

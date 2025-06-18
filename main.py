@@ -538,6 +538,208 @@ def breakdown_epic(
     asyncio.run(_breakdown_epic())
 
 
+@story_app.command("assign")
+def process_assignment(
+    story_id: str = typer.Argument(..., help="Story ID to process for assignment"),
+    story_content: str = typer.Option(
+        "", "--content", help="Story content (if not stored in system)"
+    ),
+    manual_override: bool = typer.Option(
+        False, "--override", help="Manually override assignment rules"
+    ),
+    complexity: Optional[str] = typer.Option(
+        None, "--complexity", help="Manual complexity override (low/medium/high)"
+    ),
+    debug: bool = typer.Option(False, "--debug", help="Enable debug logging"),
+):
+    """Process automatic assignment for a story."""
+
+    setup_logging(debug)
+
+    async def _process_assignment():
+        try:
+            config = get_config()
+            processor = WorkflowProcessor(config)
+
+            # Build story metadata if provided
+            story_metadata = {}
+            if complexity:
+                story_metadata["manual_complexity"] = complexity
+
+            with Progress(
+                SpinnerColumn(),
+                TextColumn("[progress.description]{task.description}"),
+                console=console,
+            ) as progress:
+                task = progress.add_task(
+                    f"Processing assignment for story {story_id}...", total=None
+                )
+
+                result = await processor.process_story_assignment(
+                    story_id=story_id,
+                    story_content=story_content,
+                    story_metadata=story_metadata,
+                    manual_override=manual_override,
+                )
+
+                progress.update(task, completed=True)
+
+            if result.success:
+                if result.data["assigned"]:
+                    console.print(
+                        f"[green]✓[/green] Story {story_id} assigned to {result.data['assignee']}"
+                    )
+                    console.print(f"[blue]Reason:[/blue] {result.data['explanation']}")
+                    
+                    if result.data.get("metadata"):
+                        console.print(f"[blue]Details:[/blue]")
+                        for key, value in result.data["metadata"].items():
+                            console.print(f"  • {key}: {value}")
+                else:
+                    console.print(f"[yellow]⚠[/yellow] Story {story_id} not assigned")
+                    console.print(f"[blue]Reason:[/blue] {result.data['explanation']}")
+            else:
+                console.print(f"[red]✗[/red] {result.message}")
+                if result.error:
+                    console.print(f"[red]Error:[/red] {result.error}")
+                sys.exit(1)
+
+        except Exception as e:
+            console.print(f"[red]✗ Assignment processing failed:[/red] {e}")
+            if debug:
+                console.print_exception()
+            sys.exit(1)
+
+    asyncio.run(_process_assignment())
+
+
+@story_app.command("assignment-queue")
+def show_assignment_queue(
+    limit: int = typer.Option(20, "--limit", "-l", help="Maximum number of items to show"),
+    debug: bool = typer.Option(False, "--debug", help="Enable debug logging"),
+):
+    """Show the current assignment queue in chronological order."""
+
+    setup_logging(debug)
+
+    try:
+        config = get_config()
+        processor = WorkflowProcessor(config)
+
+        result = processor.get_assignment_queue_workflow()
+
+        if result.success:
+            queue = result.data["queue"]
+            statistics = result.data["statistics"]
+
+            console.print(f"[green]✓[/green] Assignment Queue ({len(queue)} items)")
+            
+            # Show statistics
+            stats_table = Table(title="Assignment Statistics")
+            stats_table.add_column("Metric", style="cyan")
+            stats_table.add_column("Value", justify="right")
+            
+            stats_table.add_row("Total Processed", str(statistics["total_processed"]))
+            stats_table.add_row("Successfully Assigned", str(statistics["assigned"]))
+            stats_table.add_row("Assignment Rate", f"{statistics['assignment_rate']}%")
+            stats_table.add_row("Current Workload", str(statistics["current_workload"]))
+            
+            console.print(stats_table)
+
+            if queue:
+                # Show assignment queue
+                queue_table = Table(title="Assignment Queue (Chronological Order)")
+                queue_table.add_column("Story ID", style="cyan")
+                queue_table.add_column("Assignee")
+                queue_table.add_column("Reason")
+                queue_table.add_column("Timestamp")
+
+                for item in queue[:limit]:
+                    queue_table.add_row(
+                        item["story_id"],
+                        item["assignee"],
+                        item["reason"],
+                        item["timestamp"][:19],  # Trim to readable format
+                    )
+
+                console.print(queue_table)
+                
+                if len(queue) > limit:
+                    console.print(f"[yellow]... and {len(queue) - limit} more items[/yellow]")
+            else:
+                console.print("[yellow]No assignments in queue[/yellow]")
+
+        else:
+            console.print(f"[red]✗[/red] {result.message}")
+            sys.exit(1)
+
+    except Exception as e:
+        console.print(f"[red]✗ Failed to get assignment queue:[/red] {e}")
+        if debug:
+            console.print_exception()
+        sys.exit(1)
+
+
+@story_app.command("assignment-stats")
+def show_assignment_statistics(
+    debug: bool = typer.Option(False, "--debug", help="Enable debug logging"),
+):
+    """Show detailed assignment statistics."""
+
+    setup_logging(debug)
+
+    try:
+        config = get_config()
+        processor = WorkflowProcessor(config)
+
+        result = processor.get_assignment_statistics_workflow()
+
+        if result.success:
+            stats = result.data
+
+            console.print("[green]✓[/green] Assignment Statistics")
+
+            # Main statistics
+            main_table = Table(title="Overall Statistics")
+            main_table.add_column("Metric", style="cyan")
+            main_table.add_column("Value", justify="right")
+
+            main_table.add_row("Total Stories Processed", str(stats["total_processed"]))
+            main_table.add_row("Successfully Assigned", str(stats["assigned"]))
+            main_table.add_row("Assignment Rate", f"{stats['assignment_rate']}%")
+            main_table.add_row("Current Agent Workload", str(stats["current_workload"]))
+
+            console.print(main_table)
+
+            # Reason breakdown
+            if stats.get("reasons"):
+                reason_table = Table(title="Assignment Reasons")
+                reason_table.add_column("Reason", style="cyan")
+                reason_table.add_column("Count", justify="right")
+                reason_table.add_column("Percentage", justify="right")
+
+                total = stats["total_processed"]
+                for reason, count in stats["reasons"].items():
+                    percentage = (count / total * 100) if total > 0 else 0
+                    reason_table.add_row(
+                        reason.replace("_", " ").title(),
+                        str(count),
+                        f"{percentage:.1f}%"
+                    )
+
+                console.print(reason_table)
+
+        else:
+            console.print(f"[red]✗[/red] {result.message}")
+            sys.exit(1)
+
+    except Exception as e:
+        console.print(f"[red]✗ Failed to get assignment statistics:[/red] {e}")
+        if debug:
+            console.print_exception()
+        sys.exit(1)
+
+
 # MCP server commands
 mcp_app = typer.Typer(help="MCP (Model Context Protocol) server commands")
 app.add_typer(mcp_app, name="mcp")

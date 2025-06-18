@@ -3,8 +3,8 @@
 import logging
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional
 from pathlib import Path
+from typing import Any, Dict, List, Optional
 
 from config import Config
 from multi_repo_context import RepositoryContext, RepositoryTypeDetector

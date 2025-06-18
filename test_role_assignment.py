@@ -1,12 +1,11 @@
 """Tests for intelligent role assignment functionality."""
 
 import unittest
-from unittest.mock import Mock, patch
-from pathlib import Path
+from unittest.mock import Mock
 
 from config import Config
-from multi_repo_context import RepositoryContext, FileContext
-from role_analyzer import RoleAssignmentEngine, RoleAssignment, RoleAssignmentResult
+from multi_repo_context import FileContext, RepositoryContext
+from role_analyzer import RoleAssignmentEngine, RoleAssignmentResult
 
 
 class TestRoleAssignmentEngine(unittest.TestCase):

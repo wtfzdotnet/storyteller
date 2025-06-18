@@ -2,12 +2,11 @@
 """Demo script showing intelligent role assignment functionality."""
 
 import asyncio
-import json
 from typing import List
 from unittest.mock import Mock
 
 from config import Config
-from multi_repo_context import RepositoryContext, FileContext
+from multi_repo_context import FileContext, RepositoryContext
 from role_analyzer import RoleAssignmentEngine
 
 
@@ -42,7 +41,10 @@ def create_demo_contexts() -> List[RepositoryContext]:
                 FileContext(
                     repository="backend",
                     path="main.py",
-                    content="from fastapi import FastAPI\nfrom auth import router as auth_router",
+                    content=(
+                        "from fastapi import FastAPI\n"
+                        "from auth import router as auth_router"
+                    ),
                     file_type="python",
                 ),
             ],
@@ -57,13 +59,18 @@ def create_demo_contexts() -> List[RepositoryContext]:
                 FileContext(
                     repository="frontend",
                     path="package.json",
-                    content='{"dependencies": {"react": "^18.0.0", "@types/react": "^18.0.0"}}',
+                    content=(
+                        '{"dependencies": {"react": "^18.0.0", '
+                        '"@types/react": "^18.0.0"}}'
+                    ),
                     file_type="json",
                 ),
                 FileContext(
                     repository="frontend",
                     path="src/App.tsx",
-                    content="import React from 'react';\nexport default function App() {",
+                    content=(
+                        "import React from 'react';\n" "export default function App() {"
+                    ),
                     file_type="typescript",
                 ),
             ],
@@ -114,7 +121,7 @@ def demo_scenario(
             print(f"  • {role.role_name} (confidence: {role.confidence_score:.2f})")
         print()
 
-    print(f"Assignment metadata:")
+    print("Assignment metadata:")
     metadata = result.assignment_metadata
     print(f"  Repository types: {metadata['repository_types']}")
     print(f"  Total roles considered: {metadata['total_roles_considered']}")
@@ -136,7 +143,10 @@ async def main():
     demo_scenario(
         engine=engine,
         scenario_name="API Security Implementation",
-        story_content="Implement secure user authentication and authorization system with JWT tokens and role-based access control",
+        story_content=(
+            "Implement secure user authentication and authorization system "
+            "with JWT tokens and role-based access control"
+        ),
         contexts=[ctx for ctx in contexts if ctx.repository == "backend"],
     )
 
@@ -144,7 +154,10 @@ async def main():
     demo_scenario(
         engine=engine,
         scenario_name="User Interface Design",
-        story_content="Design responsive user interface for recipe discovery with accessibility features and mobile-first approach",
+        story_content=(
+            "Design responsive user interface for recipe discovery "
+            "with accessibility features and mobile-first approach"
+        ),
         contexts=[ctx for ctx in contexts if ctx.repository == "frontend"],
     )
 

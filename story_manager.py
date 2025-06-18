@@ -671,9 +671,7 @@ class StoryManager:
             )
             user_stories.append(user_story)
 
-        logger.info(
-            f"Created {len(user_stories)} user stories from epic {epic_id}"
-        )
+        logger.info(f"Created {len(user_stories)} user stories from epic {epic_id}")
         return user_stories
 
     async def _analyze_epic_for_breakdown(
@@ -763,10 +761,10 @@ Estimated Duration: {epic.estimated_duration_weeks} weeks"""
                             target_repositories or epic.target_repositories
                         ),
                         "story_points": 5,
-                        "rationale": "Fallback story due to parsing error"
+                        "rationale": "Fallback story due to parsing error",
                     }
                 ],
-                "breakdown_rationale": "Fallback breakdown due to LLM parsing error"
+                "breakdown_rationale": "Fallback breakdown due to LLM parsing error",
             }
 
     def get_story_status(self, story_id: str) -> Optional[Dict[str, Any]]:

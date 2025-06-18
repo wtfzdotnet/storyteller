@@ -451,22 +451,24 @@ def list_roles(
 @story_app.command("breakdown-epic")
 def breakdown_epic(
     epic_id: str = typer.Argument(..., help="Epic ID to break down"),
-    max_stories: int = typer.Option(5, "--max-stories", help="Maximum number of user stories to create"),
+    max_stories: int = typer.Option(
+        5, "--max-stories", help="Maximum number of user stories to create"
+    ),
     repositories: Optional[List[str]] = typer.Option(
         None, "--repos", help="Target repositories for the user stories"
     ),
     debug: bool = typer.Option(False, "--debug", help="Enable debug logging"),
 ):
     """Break down an epic into user stories using AI analysis."""
-    
+
     setup_logging(debug)
-    
+
     async def _breakdown_epic():
         try:
             from story_manager import StoryManager
-            
+
             story_manager = StoryManager()
-            
+
             # Show progress
             with Progress(
                 SpinnerColumn(),
@@ -476,17 +478,19 @@ def breakdown_epic(
                 task = progress.add_task(
                     f"Breaking down epic {epic_id} into user stories...", total=None
                 )
-                
+
                 user_stories = await story_manager.breakdown_epic_to_user_stories(
                     epic_id=epic_id,
                     max_user_stories=max_stories,
                     target_repositories=repositories,
                 )
-                
+
                 progress.update(task, completed=True)
-            
-            console.print(f"[green]✓[/green] Successfully broke down epic into {len(user_stories)} user stories!")
-            
+
+            console.print(
+                f"[green]✓[/green] Successfully broke down epic into {len(user_stories)} user stories!"
+            )
+
             # Display created user stories
             table = Table(title=f"User Stories Created from Epic {epic_id}")
             table.add_column("ID", style="cyan")
@@ -494,9 +498,13 @@ def breakdown_epic(
             table.add_column("Persona")
             table.add_column("Story Points", justify="center")
             table.add_column("Target Repos")
-            
+
             for story in user_stories:
-                repos_str = ", ".join(story.target_repositories) if story.target_repositories else "N/A"
+                repos_str = (
+                    ", ".join(story.target_repositories)
+                    if story.target_repositories
+                    else "N/A"
+                )
                 points_str = str(story.story_points) if story.story_points else "N/A"
                 table.add_row(
                     story.id,
@@ -505,15 +513,19 @@ def breakdown_epic(
                     points_str,
                     repos_str,
                 )
-            
+
             console.print(table)
-            
+
             # Show hierarchy
             hierarchy = story_manager.get_epic_hierarchy(epic_id)
             if hierarchy:
                 progress_info = hierarchy.get_epic_progress()
-                console.print(f"\n[bold]Epic Progress:[/bold] {progress_info['completed']}/{progress_info['total']} user stories completed")
-                
+                console.print(
+                    f"\n[bold]Epic Progress:[/bold] "
+                    f"{progress_info['completed']}/{progress_info['total']} "
+                    f"user stories completed"
+                )
+
         except ValueError as e:
             console.print(f"[red]✗[/red] {e}")
             sys.exit(1)
@@ -522,7 +534,7 @@ def breakdown_epic(
             if debug:
                 console.print_exception()
             sys.exit(1)
-    
+
     asyncio.run(_breakdown_epic())
 
 

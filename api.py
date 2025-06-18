@@ -164,7 +164,7 @@ async def list_epics(
 
         # Apply pagination
         total = len(all_epics)
-        epics = all_epics[offset:offset + limit]
+        epics = all_epics[offset : offset + limit]
 
         return EpicListResponse(
             epics=[epic_to_response(epic) for epic in epics],
@@ -329,6 +329,7 @@ async def get_epic_hierarchy(epic_id: str):
 
 
 # Epic breakdown endpoints
+
 
 class EpicBreakdownRequest(BaseModel):
     """Request model for breaking down an epic into user stories."""

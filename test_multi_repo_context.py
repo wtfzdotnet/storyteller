@@ -3,6 +3,8 @@
 import asyncio
 import os
 
+import pytest
+
 from config import get_config
 from multi_repo_context import (
     ContextCache,
@@ -97,6 +99,7 @@ def test_context_cache():
     print("✓ Context cache working correctly")
 
 
+@pytest.mark.asyncio
 async def test_multi_repository_context_reader():
     """Test the main multi-repository context reader (mock test)."""
 

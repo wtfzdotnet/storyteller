@@ -3,6 +3,8 @@
 import asyncio
 import os
 
+import pytest
+
 from config import get_config
 from mcp_server import MCPRequest, MCPStoryServer
 from multi_repo_context import MultiRepositoryContextReader
@@ -12,6 +14,7 @@ os.environ["GITHUB_TOKEN"] = "test_token"
 os.environ["DEFAULT_LLM_PROVIDER"] = "github"
 
 
+@pytest.mark.asyncio
 async def test_mcp_context_endpoints():
     """Test the new MCP context endpoints."""
 
@@ -120,6 +123,7 @@ def test_repository_configuration():
     print("✓ Repository configuration validation passed")
 
 
+@pytest.mark.asyncio
 async def test_context_reader_components():
     """Test individual components of the context reader."""
 
@@ -158,6 +162,7 @@ async def test_context_reader_components():
     print("✓ All context reader components working correctly")
 
 
+@pytest.mark.asyncio
 async def test_capabilities_update():
     """Test that new capabilities are properly registered."""
 

@@ -10,13 +10,13 @@ import pytest
 # Add src to path for imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../../src/storyteller"))
 
-from config import Config, PipelineRetryConfig, EscalationConfig
+from config import Config, EscalationConfig, PipelineRetryConfig
 from models import (
+    EscalationRecord,
     FailureCategory,
     FailureSeverity,
     PipelineFailure,
     RetryAttempt,
-    EscalationRecord,
 )
 from pipeline_monitor import PipelineMonitor
 
@@ -116,7 +116,7 @@ class TestRetryLogic:
     async def test_retry_disabled(self):
         """Test retry when disabled in config."""
         self.config.pipeline_retry_config.enabled = False
-        
+
         failure = PipelineFailure(
             repository="test/repo",
             category=FailureCategory.BUILD,
@@ -143,13 +143,13 @@ class TestRetryLogic:
     def test_exponential_backoff_calculation(self):
         """Test exponential backoff delay calculation."""
         failure1 = PipelineFailure(retry_count=0)
-        failure2 = PipelineFailure(retry_count=1) 
+        failure2 = PipelineFailure(retry_count=1)
         failure3 = PipelineFailure(retry_count=2)
 
         # Simulate delay calculations
-        delay1 = min(30 * (2.0 ** 0), 300)  # 30 seconds
-        delay2 = min(30 * (2.0 ** 1), 300)  # 60 seconds
-        delay3 = min(30 * (2.0 ** 2), 300)  # 120 seconds
+        delay1 = min(30 * (2.0**0), 300)  # 30 seconds
+        delay2 = min(30 * (2.0**1), 300)  # 60 seconds
+        delay3 = min(30 * (2.0**2), 300)  # 120 seconds
 
         assert delay1 == 30
         assert delay2 == 60
@@ -191,7 +191,7 @@ class TestRetryLogic:
         ]
 
         self.mock_db.get_recent_pipeline_failures.return_value = failures
-        
+
         escalation = self.monitor.check_for_escalation("test/repo")
 
         assert escalation is None
@@ -284,7 +284,7 @@ class TestRetryLogic:
 
         # Should simulate auto-fix for linting
         success = await self.monitor._trigger_pipeline_retry(failure)
-        
+
         # Linting issues should be auto-fixable
         assert success == True
 
@@ -298,6 +298,6 @@ class TestRetryLogic:
 
         # Should simulate auto-fix for formatting
         success = await self.monitor._trigger_pipeline_retry(failure)
-        
+
         # Formatting issues should be auto-fixable
         assert success == True

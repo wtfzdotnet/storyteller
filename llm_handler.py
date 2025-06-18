@@ -321,9 +321,9 @@ Be concise but thorough in your analysis. Focus on aspects most relevant to your
         return await self.generate_response(prompt=prompt, system_prompt=system_prompt)
 
     async def synthesize_expert_analyses(
-        self, story_content: str, expert_analyses: List[Dict[str, Any]]
+        self, story_content: str, expert_analyses: List[Dict[str, Any]], context: Optional[Dict[str, Any]] = None
     ) -> LLMResponse:
-        """Synthesize multiple expert analyses into a comprehensive story analysis."""
+        """Synthesize multiple expert analyses into a comprehensive story analysis with repository context."""
 
         system_prompt = """You are synthesizing multiple expert analyses of a user story for the Recipe Authority Platform.
 
@@ -333,8 +333,11 @@ Your task is to:
 3. Resolve any conflicting recommendations
 4. Create a comprehensive, actionable analysis
 5. Provide clear next steps and recommendations
+6. Consider repository context and technical stack implications
+7. Analyze cross-repository dependencies and impacts
 
-Focus on creating a coherent, actionable synthesis that developers can use effectively."""
+Focus on creating a coherent, actionable synthesis that developers can use effectively.
+Pay special attention to repository-specific technical details and cross-repository integration concerns."""
 
         analyses_text = "\n\n".join(
             [
@@ -343,12 +346,44 @@ Focus on creating a coherent, actionable synthesis that developers can use effec
             ]
         )
 
-        prompt = f"""Original User Story:
-{story_content}
+        prompt_parts = [
+            f"Original User Story:\n{story_content}",
+            "",
+            f"Expert Analyses:\n{analyses_text}",
+        ]
 
-Expert Analyses:
-{analyses_text}
+        # Add repository context if available
+        if context and "repository_contexts" in context:
+            repo_contexts = context["repository_contexts"]
+            if repo_contexts:
+                repo_context_text = "\n".join([
+                    f"Repository: {ctx.get('repository', 'Unknown')} ({ctx.get('repo_type', 'unknown')})\n"
+                    f"- Description: {ctx.get('description', 'No description')}\n"
+                    f"- Key Technologies: {', '.join(ctx.get('key_technologies', [])[:5])}\n"
+                    f"- Dependencies: {', '.join(ctx.get('dependencies', [])[:5])}\n"
+                    f"- Important Files: {', '.join([f['path'] for f in ctx.get('important_files', [])[:3]])}"
+                    for ctx in repo_contexts
+                ])
+                prompt_parts.extend([
+                    "",
+                    f"Repository Context:\n{repo_context_text}"
+                ])
 
-Please provide a comprehensive synthesis of these expert analyses."""
+        # Add cross-repository insights if available
+        if context and "cross_repository_insights" in context:
+            insights = context["cross_repository_insights"]
+            if insights:
+                insights_text = "\n".join([
+                    f"- Shared Technologies: {', '.join(insights.get('shared_languages', []))}",
+                    f"- Common Patterns: {', '.join(insights.get('common_patterns', []))}",
+                    f"- Integration Points: {', '.join(insights.get('integration_points', []))}"
+                ])
+                prompt_parts.extend([
+                    "",
+                    f"Cross-Repository Insights:\n{insights_text}"
+                ])
 
+        prompt_parts.append("\nPlease provide a comprehensive synthesis of these expert analyses, incorporating the repository context and cross-repository considerations.")
+
+        prompt = "\n".join(prompt_parts)
         return await self.generate_response(prompt=prompt, system_prompt=system_prompt)

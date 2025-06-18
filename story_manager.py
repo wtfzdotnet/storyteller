@@ -319,9 +319,9 @@ Respond with a JSON object containing:
             raise
 
     async def synthesize_analyses(
-        self, story_content: str, expert_analyses: List[StoryAnalysis]
+        self, story_content: str, expert_analyses: List[StoryAnalysis], context: Optional[Dict[str, Any]] = None
     ) -> str:
-        """Synthesize multiple expert analyses into a comprehensive analysis."""
+        """Synthesize multiple expert analyses into a comprehensive analysis with cross-repository considerations."""
 
         # Prepare expert analyses for synthesis
         analysis_data = [
@@ -336,7 +336,7 @@ Respond with a JSON object containing:
 
         try:
             response = await self.llm_handler.synthesize_expert_analyses(
-                story_content=story_content, expert_analyses=analysis_data
+                story_content=story_content, expert_analyses=analysis_data, context=context
             )
 
             return response.content
@@ -344,7 +344,7 @@ Respond with a JSON object containing:
         except Exception as e:
             logger.error(f"Failed to synthesize expert analyses: {e}")
 
-            # Fallback: Create a simple concatenation
+            # Enhanced fallback with context information
             synthesis_parts = [
                 "# Comprehensive Story Analysis",
                 "",
@@ -352,6 +352,39 @@ Respond with a JSON object containing:
                 f"- {', '.join([a.role_name for a in expert_analyses])}",
                 "",
             ]
+
+            # Add repository context information if available
+            if context and "repository_contexts" in context:
+                repo_contexts = context["repository_contexts"]
+                if repo_contexts:
+                    synthesis_parts.extend([
+                        "## Repository Context Analysis",
+                        "",
+                        "Target repositories and technical considerations:",
+                        ""
+                    ])
+                    
+                    for repo_ctx in repo_contexts:
+                        synthesis_parts.extend([
+                            f"### {repo_ctx.get('repository', 'Unknown Repository')} ({repo_ctx.get('repo_type', 'unknown')})",
+                            f"- **Description**: {repo_ctx.get('description', 'No description')}",
+                            f"- **Key Technologies**: {', '.join(repo_ctx.get('key_technologies', [])[:5])}",
+                            f"- **Dependencies**: {', '.join(repo_ctx.get('dependencies', [])[:5])}",
+                            ""
+                        ])
+
+            # Add cross-repository insights if available
+            if context and "cross_repository_insights" in context:
+                insights = context["cross_repository_insights"]
+                if insights:
+                    synthesis_parts.extend([
+                        "## Cross-Repository Impact Analysis",
+                        "",
+                        f"- **Shared Technologies**: {', '.join(insights.get('shared_languages', []))}",
+                        f"- **Common Patterns**: {', '.join(insights.get('common_patterns', []))}",
+                        f"- **Integration Points**: {', '.join(insights.get('integration_points', []))}",
+                        ""
+                    ])
 
             for analysis in expert_analyses:
                 synthesis_parts.extend(
@@ -387,7 +420,7 @@ Respond with a JSON object containing:
         return [self.config.default_repository]
 
     async def process_story(self, story_request: StoryRequest) -> ProcessedStory:
-        """Process a complete story through the expert analysis workflow."""
+        """Process a complete story through the expert analysis workflow with context awareness."""
 
         story_id = self._generate_story_id()
         logger.info(f"Processing story {story_id}")
@@ -395,6 +428,69 @@ Respond with a JSON object containing:
         try:
             # Analyze story content to determine roles and repositories
             content_analysis = await self.analyze_story_content(story_request.content)
+
+            # Determine target repositories first to gather context
+            target_repositories = await self.determine_target_repositories(
+                story_content=story_request.content,
+                expert_analyses=[],  # No analyses yet
+                requested_repos=story_request.target_repositories,
+            )
+
+            # Gather repository context for context-aware generation
+            repository_contexts = []
+            cross_repository_insights = {}
+            
+            try:
+                # Get individual repository contexts
+                for repo_key in target_repositories:
+                    if repo_key in self.config.repositories:
+                        repo_context = await self.context_reader.get_repository_context(
+                            repo_key, max_files=15, use_cache=True
+                        )
+                        if repo_context:
+                            repository_contexts.append(repo_context)
+                            logger.info(f"Gathered context for repository: {repo_key}")
+
+                # Get multi-repository context and cross-repo insights if multiple repos
+                if len(target_repositories) > 1:
+                    multi_context = await self.context_reader.get_multi_repository_context(
+                        repository_keys=target_repositories, max_files_per_repo=10
+                    )
+                    cross_repository_insights = multi_context.cross_repository_insights
+                    logger.info(f"Analyzed cross-repository insights: {list(cross_repository_insights.keys())}")
+
+            except Exception as e:
+                logger.warning(f"Failed to gather repository context: {e}")
+                # Continue without context if gathering fails
+                repository_contexts = []
+                cross_repository_insights = {}
+
+            # Prepare enhanced context for expert analysis
+            enhanced_context = story_request.context or {}
+            enhanced_context.update({
+                "repository_contexts": [
+                    {
+                        "repository": ctx.repository,
+                        "repo_type": ctx.repo_type,
+                        "description": ctx.description,
+                        "key_technologies": [
+                            f.language for f in ctx.key_files[:5]  # Top 5 files
+                        ],
+                        "dependencies": ctx.dependencies[:10],  # Top 10 dependencies
+                        "structure_summary": {
+                            k: len(v) if isinstance(v, list) else v
+                            for k, v in ctx.structure.items()
+                        },
+                        "important_files": [
+                            {"path": f.path, "type": f.file_type, "importance": f.importance_score}
+                            for f in ctx.key_files[:3]  # Top 3 most important files
+                        ]
+                    }
+                    for ctx in repository_contexts
+                ],
+                "cross_repository_insights": cross_repository_insights,
+                "target_repositories": target_repositories
+            })
 
             # Determine expert roles
             expert_roles = (
@@ -405,23 +501,18 @@ Respond with a JSON object containing:
 
             logger.info(f"Using expert roles: {expert_roles}")
 
-            # Get expert analyses
+            # Get expert analyses with enhanced context
             expert_analyses = await self.process_story_with_experts(
                 story_content=story_request.content,
                 expert_roles=expert_roles,
-                context=story_request.context,
+                context=enhanced_context,
             )
 
-            # Synthesize analyses
+            # Synthesize analyses with cross-repository considerations
             synthesized_analysis = await self.synthesize_analyses(
-                story_content=story_request.content, expert_analyses=expert_analyses
-            )
-
-            # Determine target repositories
-            target_repositories = await self.determine_target_repositories(
-                story_content=story_request.content,
+                story_content=story_request.content, 
                 expert_analyses=expert_analyses,
-                requested_repos=story_request.target_repositories,
+                context=enhanced_context
             )
 
             # Create processed story
@@ -435,13 +526,24 @@ Respond with a JSON object containing:
                     "content_analysis": content_analysis,
                     "processing_time": datetime.utcnow().isoformat(),
                     "expert_count": len(expert_analyses),
+                    "repository_contexts": [
+                        {
+                            "repository": ctx.repository,
+                            "repo_type": ctx.repo_type,
+                            "file_count": ctx.file_count,
+                            "languages": ctx.languages
+                        }
+                        for ctx in repository_contexts
+                    ],
+                    "cross_repository_insights": cross_repository_insights,
+                    "context_quality": len(repository_contexts) / max(len(target_repositories), 1)
                 },
             )
 
             # Store in processing queue
             self._processing_queue[story_id] = processed_story
 
-            logger.info(f"Completed processing story {story_id}")
+            logger.info(f"Completed processing story {story_id} with context from {len(repository_contexts)} repositories")
             return processed_story
 
         except Exception as e:

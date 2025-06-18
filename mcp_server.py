@@ -1,22 +1,18 @@
 """MCP (Model Context Protocol) Server for AI Story Management System."""
 
-import asyncio
-import json
 import logging
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Callable, Dict, Optional
 
-from template_manager import TemplateManager
-
 from automation.workflow_processor import WorkflowProcessor
 from config import (
     Config,
     get_config,
-    get_repository_config,
-    get_repository_ruleset,
 )
+from multi_repo_context import MultiRepositoryContextReader
 from story_manager import StoryManager
+from template_manager import TemplateManager
 
 logger = logging.getLogger(__name__)
 
@@ -57,6 +53,7 @@ class MCPStoryServer:
         self.story_manager = StoryManager(self.config)
         self.workflow_processor = WorkflowProcessor(self.config)
         self.template_manager = TemplateManager()
+        self.context_reader = MultiRepositoryContextReader(self.config)
         self._handlers: Dict[str, Callable] = {}
         self._register_handlers()
 
@@ -75,6 +72,11 @@ class MCPStoryServer:
             # Repository methods
             "repository/list": self._handle_list_repositories,
             "repository/get_config": self._handle_get_repository_config,
+            # Multi-repository context methods
+            "context/repository": self._handle_get_repository_context,
+            "context/multi_repository": self._handle_get_multi_repository_context,
+            "context/file_content": self._handle_get_file_content,
+            "context/repository_structure": self._handle_get_repository_structure,
             # System methods
             "system/health": self._handle_health_check,
             "system/capabilities": self._handle_capabilities,
@@ -304,7 +306,7 @@ class MCPStoryServer:
     async def _handle_capabilities(self, params: Dict[str, Any]) -> Dict[str, Any]:
         """Handle capabilities request."""
 
-        return {
+        capabilities_data = {
             "methods": {
                 method: {
                     "description": self._get_method_description(method),
@@ -318,7 +320,17 @@ class MCPStoryServer:
                 "github_integration",
                 "role_querying",
                 "story_management",
+                "multi_repository_context",
+                "intelligent_file_selection",
+                "repository_type_detection",
             ],
+            "capabilities": list(self._handlers.keys()),
+        }
+
+        return {
+            "success": True,
+            "message": "System capabilities retrieved",
+            "data": capabilities_data,
         }
 
     async def _handle_validate_config(self, params: Dict[str, Any]) -> Dict[str, Any]:
@@ -655,6 +667,246 @@ class MCPStoryServer:
                 "success": False,
                 "message": f"Error analyzing codebase: {str(e)}",
                 "error": "AnalysisError",
+            }
+
+    async def _handle_get_repository_context(
+        self, params: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """Handle repository context request."""
+        logger.info("[MCP] context/repository")
+
+        try:
+            repository_key = params.get("repository")
+            max_files = params.get("max_files", 20)
+            use_cache = params.get("use_cache", True)
+
+            if not repository_key:
+                return {
+                    "success": False,
+                    "message": "Repository key is required",
+                    "error": "MissingParameter",
+                }
+
+            # Get repository context
+            context = await self.context_reader.get_repository_context(
+                repository_key, max_files, use_cache
+            )
+
+            if not context:
+                return {
+                    "success": False,
+                    "message": f"Failed to get context for repository: {repository_key}",
+                    "error": "ContextError",
+                }
+
+            # Convert to serializable format
+            context_data = {
+                "repository": context.repository,
+                "repo_type": context.repo_type,
+                "description": context.description,
+                "structure": context.structure,
+                "key_files": [
+                    {
+                        "path": f.path,
+                        "content": f.content,
+                        "file_type": f.file_type,
+                        "language": f.language,
+                        "size": f.size,
+                        "importance_score": f.importance_score,
+                    }
+                    for f in context.key_files
+                ],
+                "languages": context.languages,
+                "dependencies": context.dependencies,
+                "file_count": context.file_count,
+            }
+
+            return {
+                "success": True,
+                "message": f"Retrieved context for repository: {repository_key}",
+                "data": context_data,
+            }
+
+        except Exception as e:
+            logger.error(f"Error getting repository context: {e}")
+            return {
+                "success": False,
+                "message": f"Error getting repository context: {str(e)}",
+                "error": "ContextError",
+            }
+
+    async def _handle_get_multi_repository_context(
+        self, params: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """Handle multi-repository context request."""
+        logger.info("[MCP] context/multi_repository")
+
+        try:
+            repository_keys = params.get("repositories")
+            max_files_per_repo = params.get("max_files_per_repo", 15)
+
+            # Get multi-repository context
+            multi_context = await self.context_reader.get_multi_repository_context(
+                repository_keys, max_files_per_repo
+            )
+
+            # Convert to serializable format
+            context_data = {
+                "repositories": [
+                    {
+                        "repository": ctx.repository,
+                        "repo_type": ctx.repo_type,
+                        "description": ctx.description,
+                        "structure": ctx.structure,
+                        "key_files_count": len(ctx.key_files),
+                        "key_files": [
+                            {
+                                "path": f.path,
+                                "file_type": f.file_type,
+                                "language": f.language,
+                                "size": f.size,
+                                "importance_score": f.importance_score,
+                                # Only include content for very important files to avoid size issues
+                                "content": (
+                                    f.content
+                                    if f.importance_score > 8.0
+                                    else (
+                                        f.content[:500] + "..."
+                                        if len(f.content) > 500
+                                        else f.content
+                                    )
+                                ),
+                            }
+                            for f in ctx.key_files
+                        ],
+                        "languages": ctx.languages,
+                        "dependencies": ctx.dependencies,
+                        "file_count": ctx.file_count,
+                    }
+                    for ctx in multi_context.repositories
+                ],
+                "cross_repository_insights": multi_context.cross_repository_insights,
+                "dependency_graph": multi_context.dependency_graph,
+                "total_files_analyzed": multi_context.total_files_analyzed,
+                "context_quality_score": multi_context.context_quality_score,
+            }
+
+            return {
+                "success": True,
+                "message": f"Retrieved multi-repository context: {len(multi_context.repositories)} repositories",
+                "data": context_data,
+            }
+
+        except Exception as e:
+            logger.error(f"Error getting multi-repository context: {e}")
+            return {
+                "success": False,
+                "message": f"Error getting multi-repository context: {str(e)}",
+                "error": "ContextError",
+            }
+
+    async def _handle_get_file_content(self, params: Dict[str, Any]) -> Dict[str, Any]:
+        """Handle file content request."""
+        logger.info("[MCP] context/file_content")
+
+        try:
+            repository_key = params.get("repository")
+            file_path = params.get("file_path")
+            ref = params.get("ref", "main")
+
+            if not repository_key or not file_path:
+                return {
+                    "success": False,
+                    "message": "Repository key and file path are required",
+                    "error": "MissingParameter",
+                }
+
+            # Get repository configuration
+            repo_config = self.config.repositories.get(repository_key)
+            if not repo_config:
+                return {
+                    "success": False,
+                    "message": f"Repository configuration not found: {repository_key}",
+                    "error": "ConfigError",
+                }
+
+            # Get file content using GitHub handler
+            content = await self.context_reader.github_handler.get_file_content(
+                repo_config.name, file_path, ref
+            )
+
+            if content is None:
+                return {
+                    "success": False,
+                    "message": f"File not found: {file_path} in {repository_key}",
+                    "error": "FileNotFound",
+                }
+
+            return {
+                "success": True,
+                "message": f"Retrieved file content: {file_path}",
+                "data": {
+                    "repository": repo_config.name,
+                    "file_path": file_path,
+                    "ref": ref,
+                    "content": content,
+                    "size": len(content),
+                },
+            }
+
+        except Exception as e:
+            logger.error(f"Error getting file content: {e}")
+            return {
+                "success": False,
+                "message": f"Error getting file content: {str(e)}",
+                "error": "FileError",
+            }
+
+    async def _handle_get_repository_structure(
+        self, params: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """Handle repository structure request."""
+        logger.info("[MCP] context/repository_structure")
+
+        try:
+            repository_key = params.get("repository")
+            ref = params.get("ref", "main")
+
+            if not repository_key:
+                return {
+                    "success": False,
+                    "message": "Repository key is required",
+                    "error": "MissingParameter",
+                }
+
+            # Get repository configuration
+            repo_config = self.config.repositories.get(repository_key)
+            if not repo_config:
+                return {
+                    "success": False,
+                    "message": f"Repository configuration not found: {repository_key}",
+                    "error": "ConfigError",
+                }
+
+            # Get repository structure using GitHub handler
+            structure = (
+                await self.context_reader.github_handler.get_repository_structure(
+                    repo_config.name, ref
+                )
+            )
+
+            return {
+                "success": True,
+                "message": f"Retrieved repository structure: {repository_key}",
+                "data": structure,
+            }
+
+        except Exception as e:
+            logger.error(f"Error getting repository structure: {e}")
+            return {
+                "success": False,
+                "message": f"Error getting repository structure: {str(e)}",
+                "error": "StructureError",
             }
 
     async def _handle_test_analyze(self, params: Dict[str, Any]) -> Dict[str, Any]:

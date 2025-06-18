@@ -6,9 +6,8 @@ import unittest
 from pathlib import Path
 
 import requests
-from fastapi.testclient import TestClient
-
 from api import app
+from fastapi.testclient import TestClient
 from models import Epic, StoryStatus
 from story_manager import StoryManager
 

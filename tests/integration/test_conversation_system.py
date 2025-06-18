@@ -6,7 +6,6 @@ import tempfile
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-
 from conversation_manager import ConversationManager
 from database import DatabaseManager
 from models import Conversation, ConversationParticipant, Message

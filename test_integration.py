@@ -4,6 +4,9 @@ import os
 import tempfile
 from pathlib import Path
 
+# Setup paths for imports
+import setup_path
+
 # Set dummy environment for testing
 os.environ["GITHUB_TOKEN"] = "test_token"
 os.environ["DEFAULT_LLM_PROVIDER"] = "github"

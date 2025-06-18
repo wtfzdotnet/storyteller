@@ -7,14 +7,16 @@ from pathlib import Path
 from typing import List, Optional
 
 import typer
+from automation.workflow_processor import WorkflowProcessor
+from config import get_config
 from rich.console import Console
 from rich.panel import Panel
 from rich.progress import Progress, SpinnerColumn, TextColumn
 from rich.syntax import Syntax
 from rich.table import Table
 
-from automation.workflow_processor import WorkflowProcessor
-from config import get_config
+# Setup paths for imports
+import setup_path
 
 # Initialize CLI application
 app = typer.Typer(

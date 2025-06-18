@@ -6,11 +6,11 @@ from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-
 from conversation_manager import ConversationManager
 from database import DatabaseManager
-from mcp_server import MCPRequest, MCPStoryServer
 from models import Conversation, ConversationParticipant, Message
+
+from mcp_server import MCPRequest, MCPStoryServer
 
 # Set dummy environment for testing
 os.environ["GITHUB_TOKEN"] = "test_token"

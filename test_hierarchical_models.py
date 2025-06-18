@@ -1,11 +1,23 @@
 """Tests for hierarchical story management system."""
 
+# isort: skip_file
+
 import tempfile
 import unittest
 from pathlib import Path
 
+# Setup paths for imports
+import setup_path
+
 from database import DatabaseManager
-from models import Epic, StoryHierarchy, StoryStatus, StoryType, SubStory, UserStory
+from models import (
+    Epic,
+    StoryHierarchy,
+    StoryStatus,
+    StoryType,
+    SubStory,
+    UserStory,
+)
 
 
 class TestHierarchicalModels(unittest.TestCase):

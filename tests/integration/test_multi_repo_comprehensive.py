@@ -4,10 +4,10 @@ import asyncio
 import os
 
 import pytest
-
 from config import get_config
-from mcp_server import MCPRequest, MCPStoryServer
 from multi_repo_context import MultiRepositoryContextReader
+
+from mcp_server import MCPRequest, MCPStoryServer
 
 # Set environment for testing
 os.environ["GITHUB_TOKEN"] = "test_token"

@@ -5,9 +5,8 @@ from datetime import datetime
 from typing import List, Optional
 
 from fastapi import FastAPI, HTTPException, Query, Request
-from pydantic import BaseModel, Field
-
 from models import Epic, StoryStatus
+from pydantic import BaseModel, Field
 
 logger = logging.getLogger(__name__)
 

@@ -408,7 +408,7 @@ class GitHubStorageManager:
             comment_body
         )
         
-        logger.info(f"Saved expert analysis from {analysis.role} to issue #{issue_number}")
+        logger.info(f"Saved expert analysis from {analysis.role_name} to issue #{issue_number}")
     
     def _format_expert_analysis_comment(self, analysis: StoryAnalysis) -> str:
         """Format expert analysis as a structured comment.

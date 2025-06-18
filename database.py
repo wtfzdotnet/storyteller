@@ -7,7 +7,10 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
 
 from models import (
+    Conversation,
+    ConversationParticipant,
     Epic,
+    Message,
     StoryHierarchy,
     StoryStatus,
     StoryType,
@@ -132,12 +135,12 @@ class DatabaseManager:
 
         # Create conversation-related tables
         self.create_conversation_schema(conn)
-        
+
         conn.commit()
 
     def create_conversation_schema(self, conn: sqlite3.Connection):
         """Create database schema for cross-repository conversations."""
-        
+
         # Conversations table
         conn.execute(
             """
@@ -697,66 +700,64 @@ class DatabaseManager:
 
     # Conversation management methods
 
-    def save_conversation(self, conversation: "Conversation") -> str:
+    def save_conversation(self, conversation: Conversation) -> str:
         """Save a conversation to the database."""
-        from models import Conversation
-        
         with self.get_connection() as conn:
             # Save conversation
             conv_data = conversation.to_dict()
             conv_data["updated_at"] = datetime.now(timezone.utc).isoformat()
-            
+
             conv_columns = ", ".join(conv_data.keys())
             conv_placeholders = ", ".join(["?" for _ in conv_data])
-            
+
             conn.execute(
                 f"INSERT OR REPLACE INTO conversations ({conv_columns}) VALUES ({conv_placeholders})",
                 list(conv_data.values()),
             )
-            
+
             # Save participants
             for participant in conversation.participants:
                 part_data = participant.to_dict()
                 part_data["conversation_id"] = conversation.id
-                
+
                 part_columns = ", ".join(part_data.keys())
                 part_placeholders = ", ".join(["?" for _ in part_data])
-                
+
                 conn.execute(
                     f"INSERT OR REPLACE INTO conversation_participants ({part_columns}) VALUES ({part_placeholders})",
                     list(part_data.values()),
                 )
-            
+
             # Save messages
             for message in conversation.messages:
                 msg_data = message.to_dict()
-                
+
                 msg_columns = ", ".join(msg_data.keys())
                 msg_placeholders = ", ".join(["?" for _ in msg_data])
-                
+
                 conn.execute(
                     f"INSERT OR REPLACE INTO conversation_messages ({msg_columns}) VALUES ({msg_placeholders})",
                     list(msg_data.values()),
                 )
-            
+
             return conversation.id
 
-    def get_conversation(self, conversation_id: str) -> Optional["Conversation"]:
+    def get_conversation(self, conversation_id: str) -> Optional[Conversation]:
         """Retrieve a conversation by ID with all participants and messages."""
-        from models import Conversation, ConversationParticipant, Message
-        
         with self.get_connection() as conn:
             # Get conversation
-            cursor = conn.execute("SELECT * FROM conversations WHERE id = ?", (conversation_id,))
+            cursor = conn.execute(
+                "SELECT * FROM conversations WHERE id = ?", (conversation_id,)
+            )
             conv_row = cursor.fetchone()
-            
+
             if not conv_row:
                 return None
-            
+
             # Get participants
             cursor = conn.execute(
-                "SELECT * FROM conversation_participants WHERE conversation_id = ?", 
-                (conversation_id,)
+                "SELECT * FROM conversation_participants WHERE conversation_id = ?",
+                (conversation_id,),
             )
             participants = []
             for part_row in cursor.fetchall():
@@ -768,11 +769,11 @@ class DatabaseManager:
                     metadata=json.loads(part_row["metadata"] or "{}"),
                 )
                 participants.append(participant)
-            
+
             # Get messages
             cursor = conn.execute(
-                "SELECT * FROM conversation_messages WHERE conversation_id = ? ORDER BY created_at", 
-                (conversation_id,)
+                "SELECT * FROM conversation_messages WHERE conversation_id = ? ORDER BY created_at",
+                (conversation_id,),
             )
             messages = []
             for msg_row in cursor.fetchall():
@@ -787,7 +788,7 @@ class DatabaseManager:
                     metadata=json.loads(msg_row["metadata"] or "{}"),
                 )
                 messages.append(message)
-            
+
             # Create conversation object
             conversation = Conversation(
                 id=conv_row["id"],
@@ -802,41 +803,43 @@ class DatabaseManager:
                 updated_at=datetime.fromisoformat(conv_row["updated_at"]),
                 metadata=json.loads(conv_row["metadata"] or "{}"),
             )
-            
+
             return conversation
 
-    def list_conversations(self, repository: Optional[str] = None, status: Optional[str] = None) -> List["Conversation"]:
+    def list_conversations(
+        self, repository: Optional[str] = None, status: Optional[str] = None
+    ) -> List[Conversation]:
         """List conversations, optionally filtered by repository or status."""
         with self.get_connection() as conn:
             query = "SELECT id FROM conversations"
             params = []
             conditions = []
-            
+
             if status:
                 conditions.append("status = ?")
                 params.append(status)
-            
+
             if repository:
                 conditions.append("repositories LIKE ?")
                 params.append(f'%"{repository}"%')
-            
+
             if conditions:
                 query += " WHERE " + " AND ".join(conditions)
-            
+
             query += " ORDER BY updated_at DESC"
-            
+
             cursor = conn.execute(query, params)
             conversation_ids = [row[0] for row in cursor.fetchall()]
-            
+
             conversations = []
             for conv_id in conversation_ids:
                 conv = self.get_conversation(conv_id)
                 if conv:
                     conversations.append(conv)
-            
+
             return conversations
 
-    def get_conversations_by_repository(self, repository: str) -> List["Conversation"]:
+    def get_conversations_by_repository(self, repository: str) -> List[Conversation]:
         """Get all conversations involving a specific repository."""
         return self.list_conversations(repository=repository)
 
@@ -852,8 +855,14 @@ def run_migrations(db_path: str = "storyteller.db"):
         cursor = conn.execute("SELECT name FROM sqlite_master WHERE type='table'")
         tables = [row[0] for row in cursor.fetchall()]
 
-        expected_tables = ["stories", "story_relationships", "github_issues", 
-                          "conversations", "conversation_participants", "conversation_messages"]
+        expected_tables = [
+            "stories",
+            "story_relationships",
+            "github_issues",
+            "conversations",
+            "conversation_participants",
+            "conversation_messages",
+        ]
         missing_tables = [t for t in expected_tables if t not in tables]
 
         if missing_tables:

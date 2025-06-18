@@ -79,8 +79,8 @@ async def test_conversation_database():
     print("\n=== Testing Conversation Database ===")
 
     # Use temporary file database for testing to avoid in-memory connection issues
-    import tempfile
     import os
+    import tempfile
 
     with tempfile.NamedTemporaryFile(delete=False, suffix=".db") as tmp_file:
         tmp_db_path = tmp_file.name
@@ -151,8 +151,8 @@ async def test_conversation_manager():
     print("\n=== Testing Conversation Manager ===")
 
     # Use temporary file database for testing
-    import tempfile
     import os
+    import tempfile
 
     with tempfile.NamedTemporaryFile(delete=False, suffix=".db") as tmp_file:
         tmp_db_path = tmp_file.name
@@ -247,8 +247,8 @@ async def test_mcp_conversation_endpoints():
     print("\n=== Testing MCP Conversation Endpoints ===")
 
     # Use temporary file database for testing
-    import tempfile
     import os
+    import tempfile
 
     with tempfile.NamedTemporaryFile(delete=False, suffix=".db") as tmp_file:
         tmp_db_path = tmp_file.name

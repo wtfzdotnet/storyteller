@@ -3481,20 +3481,22 @@ describe('{file_path.stem}', () => {{
 
     # Cross-repository conversation handlers
 
-    async def _handle_create_conversation(self, params: Dict[str, Any]) -> Dict[str, Any]:
+    async def _handle_create_conversation(
+        self, params: Dict[str, Any]
+    ) -> Dict[str, Any]:
         """Handle creating a new cross-repository conversation."""
-        
+
         title = params.get("title")
         if not title:
             raise ValueError("title parameter is required")
-        
+
         description = params.get("description", "")
         repositories = params.get("repositories", [])
         initial_participants = params.get("participants", [])
-        
+
         if not repositories:
             raise ValueError("At least one repository must be specified")
-        
+
         try:
             conversation = await self.conversation_manager.create_conversation(
                 title=title,
@@ -3502,7 +3504,7 @@ describe('{file_path.stem}', () => {{
                 repositories=repositories,
                 initial_participants=initial_participants,
             )
-            
+
             return {
                 "success": True,
                 "conversation_id": conversation.id,
@@ -3513,14 +3515,14 @@ describe('{file_path.stem}', () => {{
 
     async def _handle_add_participant(self, params: Dict[str, Any]) -> Dict[str, Any]:
         """Handle adding a participant to a conversation."""
-        
+
         conversation_id = params.get("conversation_id")
         name = params.get("name")
         role = params.get("role")
-        
+
         if not all([conversation_id, name, role]):
             raise ValueError("conversation_id, name, and role parameters are required")
-        
+
         try:
             participant = await self.conversation_manager.add_participant(
                 conversation_id=conversation_id,
@@ -3528,7 +3530,7 @@ describe('{file_path.stem}', () => {{
                 role=role,
                 repository=params.get("repository"),
             )
-            
+
             return {
                 "success": True,
                 "participant_id": participant.id,
@@ -3539,14 +3541,16 @@ describe('{file_path.stem}', () => {{
 
     async def _handle_add_message(self, params: Dict[str, Any]) -> Dict[str, Any]:
         """Handle adding a message to a conversation."""
-        
+
         conversation_id = params.get("conversation_id")
         participant_id = params.get("participant_id")
         content = params.get("content")
-        
+
         if not all([conversation_id, participant_id, content]):
-            raise ValueError("conversation_id, participant_id, and content parameters are required")
-        
+            raise ValueError(
+                "conversation_id, participant_id, and content parameters are required"
+            )
+
         try:
             message = await self.conversation_manager.add_message(
                 conversation_id=conversation_id,
@@ -3555,7 +3559,7 @@ describe('{file_path.stem}', () => {{
                 message_type=params.get("message_type", "text"),
                 repository_context=params.get("repository_context"),
             )
-            
+
             return {
                 "success": True,
                 "message_id": message.id,
@@ -3564,17 +3568,21 @@ describe('{file_path.stem}', () => {{
         except Exception as e:
             return {"success": False, "error": str(e)}
 
-    async def _handle_add_context_message(self, params: Dict[str, Any]) -> Dict[str, Any]:
+    async def _handle_add_context_message(
+        self, params: Dict[str, Any]
+    ) -> Dict[str, Any]:
         """Handle adding a context-sharing message."""
-        
+
         conversation_id = params.get("conversation_id")
         participant_id = params.get("participant_id")
         repository = params.get("repository")
         context_summary = params.get("context_summary")
-        
+
         if not all([conversation_id, participant_id, repository, context_summary]):
-            raise ValueError("conversation_id, participant_id, repository, and context_summary parameters are required")
-        
+            raise ValueError(
+                "conversation_id, participant_id, repository, and context_summary parameters are required"
+            )
+
         try:
             message = await self.conversation_manager.add_context_message(
                 conversation_id=conversation_id,
@@ -3582,7 +3590,7 @@ describe('{file_path.stem}', () => {{
                 repository=repository,
                 context_summary=context_summary,
             )
-            
+
             return {
                 "success": True,
                 "message_id": message.id,
@@ -3591,16 +3599,20 @@ describe('{file_path.stem}', () => {{
         except Exception as e:
             return {"success": False, "error": str(e)}
 
-    async def _handle_add_decision_message(self, params: Dict[str, Any]) -> Dict[str, Any]:
+    async def _handle_add_decision_message(
+        self, params: Dict[str, Any]
+    ) -> Dict[str, Any]:
         """Handle adding a decision message."""
-        
+
         conversation_id = params.get("conversation_id")
         participant_id = params.get("participant_id")
         decision = params.get("decision")
-        
+
         if not all([conversation_id, participant_id, decision]):
-            raise ValueError("conversation_id, participant_id, and decision parameters are required")
-        
+            raise ValueError(
+                "conversation_id, participant_id, and decision parameters are required"
+            )
+
         try:
             message = await self.conversation_manager.add_decision_message(
                 conversation_id=conversation_id,
@@ -3608,7 +3620,7 @@ describe('{file_path.stem}', () => {{
                 decision=decision,
                 repositories_affected=params.get("repositories_affected"),
             )
-            
+
             return {
                 "success": True,
                 "message_id": message.id,
@@ -3619,15 +3631,15 @@ describe('{file_path.stem}', () => {{
 
     async def _handle_get_conversation(self, params: Dict[str, Any]) -> Dict[str, Any]:
         """Handle getting a conversation."""
-        
+
         conversation_id = params.get("conversation_id")
         if not conversation_id:
             raise ValueError("conversation_id parameter is required")
-        
+
         conversation = self.conversation_manager.get_conversation(conversation_id)
         if not conversation:
             return {"success": False, "error": "Conversation not found"}
-        
+
         return {
             "success": True,
             "conversation": conversation.get_conversation_summary(),
@@ -3635,60 +3647,76 @@ describe('{file_path.stem}', () => {{
             "message_count": len(conversation.messages),
         }
 
-    async def _handle_list_conversations(self, params: Dict[str, Any]) -> Dict[str, Any]:
+    async def _handle_list_conversations(
+        self, params: Dict[str, Any]
+    ) -> Dict[str, Any]:
         """Handle listing conversations."""
-        
+
         repository = params.get("repository")
         status = params.get("status")
-        
+
         conversations = self.conversation_manager.list_conversations(
             repository=repository, status=status
         )
-        
+
         return {
             "success": True,
-            "conversations": [conv.get_conversation_summary() for conv in conversations],
+            "conversations": [
+                conv.get_conversation_summary() for conv in conversations
+            ],
             "total_count": len(conversations),
         }
 
-    async def _handle_get_conversation_history(self, params: Dict[str, Any]) -> Dict[str, Any]:
+    async def _handle_get_conversation_history(
+        self, params: Dict[str, Any]
+    ) -> Dict[str, Any]:
         """Handle getting conversation history."""
-        
+
         conversation_id = params.get("conversation_id")
         if not conversation_id:
             raise ValueError("conversation_id parameter is required")
-        
+
         history = self.conversation_manager.get_conversation_history(conversation_id)
-        
+
         if "error" in history:
             return {"success": False, "error": history["error"]}
-        
+
         return {"success": True, "history": history}
 
-    async def _handle_get_cross_repository_insights(self, params: Dict[str, Any]) -> Dict[str, Any]:
+    async def _handle_get_cross_repository_insights(
+        self, params: Dict[str, Any]
+    ) -> Dict[str, Any]:
         """Handle getting cross-repository insights."""
-        
+
         conversation_id = params.get("conversation_id")
         if not conversation_id:
             raise ValueError("conversation_id parameter is required")
-        
-        insights = await self.conversation_manager.get_cross_repository_insights(conversation_id)
-        
+
+        insights = await self.conversation_manager.get_cross_repository_insights(
+            conversation_id
+        )
+
         if "error" in insights:
             return {"success": False, "error": insights["error"]}
-        
+
         return {"success": True, "insights": insights}
 
-    async def _handle_archive_conversation(self, params: Dict[str, Any]) -> Dict[str, Any]:
+    async def _handle_archive_conversation(
+        self, params: Dict[str, Any]
+    ) -> Dict[str, Any]:
         """Handle archiving a conversation."""
-        
+
         conversation_id = params.get("conversation_id")
         if not conversation_id:
             raise ValueError("conversation_id parameter is required")
-        
+
         success = self.conversation_manager.archive_conversation(conversation_id)
-        
+
         return {
             "success": success,
-            "message": "Conversation archived successfully" if success else "Failed to archive conversation",
+            "message": (
+                "Conversation archived successfully"
+                if success
+                else "Failed to archive conversation"
+            ),
         }

@@ -59,15 +59,15 @@ def test_intelligent_file_selector():
     ]
 
     selected = selector.select_important_files("frontend", frontend_files, 4)
-    
+
     # Should include important config and source files
     assert "package.json" in selected
     assert "src/App.js" in selected
-    
+
     # Should exclude build artifacts and dependencies
     assert "node_modules/react/index.js" not in selected
     assert "build/static/js/main.js" not in selected
-    
+
     # Should limit to requested count
     assert len(selected) <= 4
 
@@ -112,11 +112,11 @@ def test_language_detection():
 if __name__ == "__main__":
     print("Running multi-repository context unit tests...")
     print("=" * 50)
-    
+
     test_repository_type_detector()
     test_intelligent_file_selector()
     test_context_cache()
     test_language_detection()
-    
+
     print("=" * 50)
     print("✓ All multi-repository context unit tests passed!")

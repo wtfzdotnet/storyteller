@@ -229,7 +229,9 @@ async def test_mcp_conversation_endpoints_integration():
         assert response.result["success"]
         conversation_data = response.result["conversation"]
         assert conversation_data["title"] == "Database Migration Strategy"
-        assert conversation_data["status"] == "resolved"  # Should be resolved after decision
+        assert (
+            conversation_data["status"] == "resolved"
+        )  # Should be resolved after decision
 
         # Test getting history
         history_request = MCPRequest(

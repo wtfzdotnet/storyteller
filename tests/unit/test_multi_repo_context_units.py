@@ -107,15 +107,15 @@ def test_intelligent_file_selector():
     ]
 
     selected = selector.select_important_files("frontend", frontend_files, 4)
-    
+
     # Should include important config and source files
     assert "package.json" in selected
     assert "src/App.js" in selected
-    
+
     # Should exclude build artifacts and dependencies
     assert "node_modules/react/index.js" not in selected
     assert "build/static/js/main.js" not in selected
-    
+
     # Should limit to requested count
     assert len(selected) <= 4
 
@@ -132,15 +132,15 @@ def test_intelligent_file_selector():
     ]
 
     selected = selector.select_important_files("backend", backend_files, 4)
-    
+
     # Should include important config and source files
     assert "requirements.txt" in selected
     assert "app.py" in selected
-    
+
     # Should exclude virtual environment and cache files
     assert "venv/lib/python3.9/site-packages/flask/__init__.py" not in selected
     assert "__pycache__/app.cpython-39.pyc" not in selected
-    
+
     # Should limit to requested count
     assert len(selected) <= 4
 
@@ -153,7 +153,7 @@ def test_intelligent_file_selector():
     ]
 
     selected = selector.select_important_files("frontend", mixed_items, 3)
-    
+
     # Should handle directories appropriately
     assert len(selected) <= 3
 
@@ -216,7 +216,7 @@ def test_file_selector_priority_scoring():
     # Test that random files get lower priority
     all_files = config_files + [("src/App.js", "file"), ("build/output.js", "file")]
     selected = selector.select_important_files("frontend", all_files, 3)
-    
+
     # Should prefer important files over random ones
     assert "package.json" in selected
     if "src/App.js" in [f[0] for f in all_files]:
@@ -238,8 +238,8 @@ def test_repository_type_detection_edge_cases():
     # Test mixed signals (should pick the strongest one)
     mixed_files = [
         "package.json",  # Frontend
-        "src/App.js",    # Frontend
-        "app.py",        # Backend
+        "src/App.js",  # Frontend
+        "app.py",  # Backend
     ]
     result = detector.detect_repository_type({}, mixed_files)
     # Should detect as frontend since it has more frontend indicators
@@ -248,16 +248,13 @@ def test_repository_type_detection_edge_cases():
     # Test with repository metadata
     repo_metadata = {
         "description": "React application for user interface",
-        "language": "JavaScript"
+        "language": "JavaScript",
     }
     result = detector.detect_repository_type(repo_metadata, ["index.js"])
     assert result == "frontend"  # Should use metadata context
 
     # Test language-based detection
-    java_files = [
-        "src/main/java/com/example/App.java",
-        "pom.xml"
-    ]
+    java_files = ["src/main/java/com/example/App.java", "pom.xml"]
     result = detector.detect_repository_type({}, java_files)
     assert result == "backend"
 
@@ -265,7 +262,7 @@ def test_repository_type_detection_edge_cases():
         "train_model.py",
         "requirements.txt",
         "data/training_data.csv",
-        "models/neural_network.pkl"
+        "models/neural_network.pkl",
     ]
     result = detector.detect_repository_type({}, python_ml_files)
     assert result == "data"  # Should detect as data/ML project

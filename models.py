@@ -190,13 +190,13 @@ class StoryHierarchy:
 @dataclass
 class ConversationParticipant:
     """Represents a participant in a cross-repository conversation."""
-    
+
     id: str = field(default_factory=lambda: f"participant_{uuid.uuid4().hex[:8]}")
     name: str = ""
     role: str = ""  # e.g., "system-architect", "lead-developer", "user"
     repository: Optional[str] = None  # Repository context for this participant
     metadata: Dict[str, Any] = field(default_factory=dict)
-    
+
     def to_dict(self) -> Dict[str, Any]:
         """Convert participant to dictionary for database storage."""
         return {
@@ -208,10 +208,10 @@ class ConversationParticipant:
         }
 
 
-@dataclass 
+@dataclass
 class Message:
     """Represents a single message in a conversation."""
-    
+
     id: str = field(default_factory=lambda: f"msg_{uuid.uuid4().hex[:8]}")
     conversation_id: str = ""
     participant_id: str = ""
@@ -220,7 +220,7 @@ class Message:
     repository_context: Optional[str] = None
     created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     metadata: Dict[str, Any] = field(default_factory=dict)
-    
+
     def to_dict(self) -> Dict[str, Any]:
         """Convert message to dictionary for database storage."""
         return {
@@ -238,7 +238,7 @@ class Message:
 @dataclass
 class Conversation:
     """Represents a cross-repository conversation."""
-    
+
     id: str = field(default_factory=lambda: f"conv_{uuid.uuid4().hex[:8]}")
     title: str = ""
     description: str = ""
@@ -250,7 +250,7 @@ class Conversation:
     created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     updated_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     metadata: Dict[str, Any] = field(default_factory=dict)
-    
+
     def to_dict(self) -> Dict[str, Any]:
         """Convert conversation to dictionary for database storage."""
         return {
@@ -264,29 +264,36 @@ class Conversation:
             "updated_at": self.updated_at.isoformat(),
             "metadata": json.dumps(self.metadata),
         }
-    
-    def add_message(self, participant_id: str, content: str, 
-                   message_type: str = "text", repository_context: Optional[str] = None) -> Message:
+
+    def add_message(
+        self,
+        participant_id: str,
+        content: str,
+        message_type: str = "text",
+        repository_context: Optional[str] = None,
+    ) -> Message:
         """Add a new message to the conversation."""
         message = Message(
             conversation_id=self.id,
             participant_id=participant_id,
             content=content,
             message_type=message_type,
-            repository_context=repository_context
+            repository_context=repository_context,
         )
         self.messages.append(message)
         self.updated_at = datetime.now(timezone.utc)
         return message
-    
+
     def get_messages_by_repository(self, repository: str) -> List[Message]:
         """Get all messages related to a specific repository."""
         return [msg for msg in self.messages if msg.repository_context == repository]
-    
-    def get_participants_by_repository(self, repository: str) -> List[ConversationParticipant]:
+
+    def get_participants_by_repository(
+        self, repository: str
+    ) -> List[ConversationParticipant]:
         """Get all participants associated with a specific repository."""
         return [p for p in self.participants if p.repository == repository]
-    
+
     def get_conversation_summary(self) -> Dict[str, Any]:
         """Get a summary of the conversation."""
         return {

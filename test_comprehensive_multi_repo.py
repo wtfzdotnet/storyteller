@@ -51,10 +51,12 @@ def test_multi_repository_structure():
         assert hasattr(repo_config, "description")
         assert hasattr(repo_config, "dependencies")
         assert hasattr(repo_config, "story_labels")
-        
+
         # Test that dependencies reference valid repositories
         for dep in repo_config.dependencies:
-            assert dep in config.repositories or dep == "", f"Invalid dependency {dep} in {key}"
+            assert (
+                dep in config.repositories or dep == ""
+            ), f"Invalid dependency {dep} in {key}"
 
 
 def test_repository_types():
@@ -73,7 +75,7 @@ def test_repository_types():
     # Common repository types should be present
     expected_types = {"backend", "frontend", "mobile", "data", "devops"}
     available_types = {repo_config.type for repo_config in config.repositories.values()}
-    
+
     # At least some expected types should be present
     assert len(expected_types & available_types) > 0
 
@@ -81,10 +83,10 @@ def test_repository_types():
 if __name__ == "__main__":
     print("Running comprehensive multi-repository unit tests...")
     print("=" * 60)
-    
+
     test_repository_configuration()
     test_multi_repository_structure()
     test_repository_types()
-    
+
     print("=" * 60)
     print("✓ All comprehensive multi-repository unit tests passed!")

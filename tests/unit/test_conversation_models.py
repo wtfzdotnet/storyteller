@@ -20,7 +20,7 @@ def test_conversation_participant_model():
     participant = ConversationParticipant(
         name="Alice Developer", role="lead-developer", repository="backend"
     )
-    
+
     assert participant.name == "Alice Developer"
     assert participant.role == "lead-developer"
     assert participant.repository == "backend"
@@ -32,7 +32,7 @@ def test_message_model():
     participant = ConversationParticipant(
         name="Bob Designer", role="ux-designer", repository="frontend"
     )
-    
+
     message = Message(
         conversation_id="test_conv",
         participant_id=participant.id,
@@ -40,7 +40,7 @@ def test_message_model():
         message_type="text",
         repository_context="frontend",
     )
-    
+
     assert message.conversation_id == "test_conv"
     assert message.participant_id == participant.id
     assert message.content == "This is a test message about UI design."
@@ -54,14 +54,14 @@ def test_conversation_model():
     participant = ConversationParticipant(
         name="Charlie Architect", role="system-architect"
     )
-    
+
     message = Message(
         conversation_id="test_conv",
         participant_id=participant.id,
         content="Let's discuss the system architecture.",
         message_type="text",
     )
-    
+
     conversation = Conversation(
         title="System Architecture Discussion",
         description="Planning system-wide architectural decisions",
@@ -69,7 +69,7 @@ def test_conversation_model():
         participants=[participant],
         messages=[message],
     )
-    
+
     assert conversation.title == "System Architecture Discussion"
     assert conversation.repositories == ["backend", "frontend", "mobile"]
     assert len(conversation.participants) == 1
@@ -89,7 +89,7 @@ def test_conversation_repository_filtering():
     general_participant = ConversationParticipant(
         name="Product Manager", role="product-manager"
     )
-    
+
     # Create messages for different repositories
     backend_message = Message(
         conversation_id="test_conv",
@@ -108,28 +108,28 @@ def test_conversation_repository_filtering():
         participant_id=general_participant.id,
         content="General product requirements",
     )
-    
+
     conversation = Conversation(
         title="Feature Planning",
         repositories=["backend", "frontend"],
         participants=[backend_participant, frontend_participant, general_participant],
         messages=[backend_message, frontend_message, general_message],
     )
-    
+
     # Test participant filtering
     backend_participants = conversation.get_participants_by_repository("backend")
     assert len(backend_participants) == 1
     assert backend_participants[0].name == "Backend Dev"
-    
+
     frontend_participants = conversation.get_participants_by_repository("frontend")
     assert len(frontend_participants) == 1
     assert frontend_participants[0].name == "Frontend Dev"
-    
+
     # Test message filtering
     backend_messages = conversation.get_messages_by_repository("backend")
     assert len(backend_messages) == 1
     assert "Backend API" in backend_messages[0].content
-    
+
     frontend_messages = conversation.get_messages_by_repository("frontend")
     assert len(frontend_messages) == 1
     assert "Frontend UI" in frontend_messages[0].content
@@ -199,7 +199,7 @@ async def test_conversation_manager_basic_operations():
 def test_message_types():
     """Test different message types."""
     participant = ConversationParticipant(name="Test User", role="developer")
-    
+
     # Test text message
     text_message = Message(
         conversation_id="test",
@@ -208,7 +208,7 @@ def test_message_types():
         message_type="text",
     )
     assert text_message.message_type == "text"
-    
+
     # Test context share message
     context_message = Message(
         conversation_id="test",
@@ -219,7 +219,7 @@ def test_message_types():
     )
     assert context_message.message_type == "context_share"
     assert context_message.repository_context == "backend"
-    
+
     # Test decision message
     decision_message = Message(
         conversation_id="test",
@@ -228,7 +228,7 @@ def test_message_types():
         message_type="decision",
     )
     assert decision_message.message_type == "decision"
-    
+
     # Test system message
     system_message = Message(
         conversation_id="test",

@@ -28,7 +28,7 @@ class ConversationManager:
         initial_participants: Optional[List[Dict[str, str]]] = None,
     ) -> Conversation:
         """Create a new cross-repository conversation."""
-        
+
         conversation = Conversation(
             title=title,
             description=description,
@@ -47,15 +47,21 @@ class ConversationManager:
 
         # Save to database
         self.database.save_conversation(conversation)
-        
-        logger.info(f"Created conversation: {conversation.id} for repositories: {repositories}")
+
+        logger.info(
+            f"Created conversation: {conversation.id} for repositories: {repositories}"
+        )
         return conversation
 
     async def add_participant(
-        self, conversation_id: str, name: str, role: str, repository: Optional[str] = None
+        self,
+        conversation_id: str,
+        name: str,
+        role: str,
+        repository: Optional[str] = None,
     ) -> ConversationParticipant:
         """Add a participant to an existing conversation."""
-        
+
         conversation = self.database.get_conversation(conversation_id)
         if not conversation:
             raise ValueError(f"Conversation {conversation_id} not found")
@@ -65,11 +71,13 @@ class ConversationManager:
             role=role,
             repository=repository,
         )
-        
+
         conversation.participants.append(participant)
         self.database.save_conversation(conversation)
-        
-        logger.info(f"Added participant {name} ({role}) to conversation {conversation_id}")
+
+        logger.info(
+            f"Added participant {name} ({role}) to conversation {conversation_id}"
+        )
         return participant
 
     async def add_message(
@@ -81,7 +89,7 @@ class ConversationManager:
         repository_context: Optional[str] = None,
     ) -> Message:
         """Add a message to a conversation."""
-        
+
         conversation = self.database.get_conversation(conversation_id)
         if not conversation:
             raise ValueError(f"Conversation {conversation_id} not found")
@@ -99,10 +107,12 @@ class ConversationManager:
             message_type=message_type,
             repository_context=repository_context,
         )
-        
+
         self.database.save_conversation(conversation)
-        
-        logger.info(f"Added message to conversation {conversation_id} from {participant.name}")
+
+        logger.info(
+            f"Added message to conversation {conversation_id} from {participant.name}"
+        )
         return message
 
     async def add_context_message(
@@ -113,7 +123,7 @@ class ConversationManager:
         context_summary: str,
     ) -> Message:
         """Add a context-sharing message with repository information."""
-        
+
         # Get repository context
         try:
             repo_context = await self.context_reader.get_repository_context(repository)
@@ -121,14 +131,22 @@ class ConversationManager:
                 context_content = f"**Repository Context: {repository}**\n\n"
                 context_content += f"Type: {repo_context.repo_type}\n"
                 context_content += f"Description: {repo_context.description}\n"
-                context_content += f"Key Files: {len(repo_context.key_files)} files analyzed\n"
-                context_content += f"Languages: {', '.join(repo_context.languages.keys())}\n\n"
+                context_content += (
+                    f"Key Files: {len(repo_context.key_files)} files analyzed\n"
+                )
+                context_content += (
+                    f"Languages: {', '.join(repo_context.languages.keys())}\n\n"
+                )
                 context_content += f"Summary: {context_summary}"
             else:
-                context_content = f"**Repository Context: {repository}**\n\n{context_summary}"
+                context_content = (
+                    f"**Repository Context: {repository}**\n\n{context_summary}"
+                )
         except Exception as e:
             logger.warning(f"Failed to get repository context for {repository}: {e}")
-            context_content = f"**Repository Context: {repository}**\n\n{context_summary}"
+            context_content = (
+                f"**Repository Context: {repository}**\n\n{context_summary}"
+            )
 
         return await self.add_message(
             conversation_id=conversation_id,
@@ -146,10 +164,12 @@ class ConversationManager:
         repositories_affected: Optional[List[str]] = None,
     ) -> Message:
         """Add a decision message to the conversation."""
-        
+
         content = f"**Decision Made**\n\n{decision}"
         if repositories_affected:
-            content += f"\n\n**Repositories Affected**: {', '.join(repositories_affected)}"
+            content += (
+                f"\n\n**Repositories Affected**: {', '.join(repositories_affected)}"
+            )
 
         message = await self.add_message(
             conversation_id=conversation_id,
@@ -179,7 +199,7 @@ class ConversationManager:
 
     def get_conversation_history(self, conversation_id: str) -> Dict[str, Any]:
         """Get formatted conversation history."""
-        
+
         conversation = self.database.get_conversation(conversation_id)
         if not conversation:
             return {"error": "Conversation not found"}
@@ -194,25 +214,31 @@ class ConversationManager:
         # Format messages
         for message in conversation.messages:
             participant = next(
-                (p for p in conversation.participants if p.id == message.participant_id),
+                (
+                    p
+                    for p in conversation.participants
+                    if p.id == message.participant_id
+                ),
                 None,
             )
-            
-            history["messages"].append({
-                "id": message.id,
-                "participant": participant.name if participant else "Unknown",
-                "role": participant.role if participant else "Unknown",
-                "content": message.content,
-                "type": message.message_type,
-                "repository_context": message.repository_context,
-                "created_at": message.created_at.isoformat(),
-            })
+
+            history["messages"].append(
+                {
+                    "id": message.id,
+                    "participant": participant.name if participant else "Unknown",
+                    "role": participant.role if participant else "Unknown",
+                    "content": message.content,
+                    "type": message.message_type,
+                    "repository_context": message.repository_context,
+                    "created_at": message.created_at.isoformat(),
+                }
+            )
 
         # Repository-specific summaries
         for repository in conversation.repositories:
             repo_messages = conversation.get_messages_by_repository(repository)
             repo_participants = conversation.get_participants_by_repository(repository)
-            
+
             history["repository_summary"][repository] = {
                 "message_count": len(repo_messages),
                 "participant_count": len(repo_participants),
@@ -225,7 +251,7 @@ class ConversationManager:
         self, conversation_id: str
     ) -> Dict[str, Any]:
         """Generate insights about cross-repository implications from the conversation."""
-        
+
         conversation = self.database.get_conversation(conversation_id)
         if not conversation:
             return {"error": "Conversation not found"}
@@ -250,7 +276,7 @@ class ConversationManager:
             context_messages = [
                 msg for msg in repo_messages if msg.message_type == "context_share"
             ]
-            
+
             insights["repository_impacts"][repository] = {
                 "message_count": len(repo_messages),
                 "context_shares": len(context_messages),
@@ -279,7 +305,7 @@ class ConversationManager:
 
     def archive_conversation(self, conversation_id: str) -> bool:
         """Archive a completed conversation."""
-        
+
         conversation = self.database.get_conversation(conversation_id)
         if not conversation:
             return False
@@ -287,6 +313,6 @@ class ConversationManager:
         conversation.status = "archived"
         conversation.updated_at = datetime.now(timezone.utc)
         self.database.save_conversation(conversation)
-        
+
         logger.info(f"Archived conversation: {conversation_id}")
         return True

@@ -767,6 +767,213 @@ Estimated Duration: {epic.estimated_duration_weeks} weeks"""
                 "breakdown_rationale": "Fallback breakdown due to LLM parsing error",
             }
 
+    async def generate_sub_stories_for_departments(
+        self,
+        user_story_id: str,
+        departments: Optional[List[str]] = None,
+    ) -> List[SubStory]:
+        """Generate sub-stories for different departments based on user story content."""
+
+        # Get the user story
+        user_story = self.database.get_story(user_story_id)
+        if not user_story or not isinstance(user_story, UserStory):
+            raise ValueError(f"User story not found: {user_story_id}")
+
+        # Default departments if none provided
+        if departments is None:
+            departments = ["backend", "frontend", "testing", "devops"]
+
+        # Analyze the user story to determine relevant departments
+        relevant_departments = await self._analyze_user_story_for_departments(
+            user_story, departments
+        )
+
+        # Generate sub-stories for each relevant department
+        sub_stories = []
+        sub_story_map = {}  # Map department to sub-story for dependency resolution
+
+        for dept_info in relevant_departments:
+            department = dept_info["department"]
+            tasks = dept_info.get("tasks", [])
+            dependencies = dept_info.get("dependencies", [])
+
+            # Create sub-story for this department
+            sub_story = self.create_sub_story(
+                user_story_id=user_story_id,
+                title=dept_info["title"],
+                description=dept_info["description"],
+                department=department,
+                technical_requirements=tasks,
+                dependencies=dependencies,  # Store as strings for now
+                target_repository=dept_info.get("target_repository", department),
+                estimated_hours=dept_info.get("estimated_hours", 8),
+            )
+            sub_stories.append(sub_story)
+            sub_story_map[department] = sub_story.id
+
+        # Now resolve cross-department dependencies with actual sub-story IDs
+        for sub_story in sub_stories:
+            dept_info = next(
+                d
+                for d in relevant_departments
+                if d["department"] == sub_story.department
+            )
+            dependencies = dept_info.get("dependencies", [])
+
+            for dep_department in dependencies:
+                if dep_department in sub_story_map:
+                    # Add actual relationship between sub-stories
+                    self.add_story_relationship(
+                        source_id=sub_story.id,
+                        target_id=sub_story_map[dep_department],
+                        relationship_type="depends_on",
+                        metadata={
+                            "department_dependency": True,
+                            "dependency_type": f"{sub_story.department}_depends_on_{dep_department}",
+                        },
+                    )
+
+        logger.info(
+            f"Generated {len(sub_stories)} sub-stories for user story {user_story_id}"
+        )
+        return sub_stories
+
+    async def _analyze_user_story_for_departments(
+        self,
+        user_story: UserStory,
+        available_departments: List[str],
+    ) -> List[Dict[str, Any]]:
+        """Analyze a user story to determine which departments need sub-stories."""
+
+        system_prompt = f"""You are analyzing a user story to determine which development departments need to work on it and what specific tasks each department should handle.
+
+Available departments: {available_departments}
+- backend: API services, database operations, business logic
+- frontend: User interfaces, client applications, user experience
+- testing: Quality assurance, test automation, validation
+- devops: Infrastructure, deployment, monitoring, security
+
+For each relevant department, provide:
+1. Specific tasks they need to complete
+2. Dependencies on other departments
+3. Estimated hours of work
+4. Target repository
+
+Respond with a JSON array of department assignments:
+[
+  {{
+    "department": "backend",
+    "title": "Backend Implementation for [Feature]",
+    "description": "Implement backend components for the user story",
+    "tasks": ["task1", "task2", "task3"],
+    "dependencies": ["other_department"],
+    "target_repository": "backend",
+    "estimated_hours": 8
+  }}
+]
+
+Only include departments that are actually needed for this user story. Consider the user story's target repositories and acceptance criteria."""
+
+        user_story_content = f"""User Story: {user_story.title}
+
+Description: {user_story.description}
+
+User Persona: {user_story.user_persona}
+User Goal: {user_story.user_goal}
+
+Acceptance Criteria:
+{chr(10).join(f"- {criteria}" for criteria in user_story.acceptance_criteria)}
+
+Target Repositories: {user_story.target_repositories}
+Story Points: {user_story.story_points}"""
+
+        try:
+            response = await self.processor.llm_handler.generate_response(
+                prompt=user_story_content,
+                system_prompt=system_prompt,
+            )
+
+            # Parse JSON response
+            departments_analysis = json.loads(response.content)
+            return departments_analysis
+
+        except (json.JSONDecodeError, KeyError) as e:
+            logger.warning(f"Failed to parse department analysis, using fallback: {e}")
+            # Fallback: create sub-stories for common departments based on target repos
+            fallback_departments = []
+
+            if "backend" in user_story.target_repositories:
+                fallback_departments.append(
+                    {
+                        "department": "backend",
+                        "title": f"Backend Implementation: {user_story.title}",
+                        "description": "Implement backend components for this user story",
+                        "tasks": [
+                            "API development",
+                            "Database operations",
+                            "Business logic",
+                        ],
+                        "dependencies": [],
+                        "target_repository": "backend",
+                        "estimated_hours": 8,
+                    }
+                )
+
+            if "frontend" in user_story.target_repositories:
+                fallback_departments.append(
+                    {
+                        "department": "frontend",
+                        "title": f"Frontend Implementation: {user_story.title}",
+                        "description": "Implement frontend components for this user story",
+                        "tasks": [
+                            "UI development",
+                            "API integration",
+                            "User experience",
+                        ],
+                        "dependencies": (
+                            ["backend"]
+                            if "backend" in user_story.target_repositories
+                            else []
+                        ),
+                        "target_repository": "frontend",
+                        "estimated_hours": 12,
+                    }
+                )
+
+            # Always include testing if there are other departments
+            if fallback_departments:
+                fallback_departments.append(
+                    {
+                        "department": "testing",
+                        "title": f"Testing: {user_story.title}",
+                        "description": "Test all components of this user story",
+                        "tasks": [
+                            "Test planning",
+                            "Test implementation",
+                            "Quality validation",
+                        ],
+                        "dependencies": [d["department"] for d in fallback_departments],
+                        "target_repository": fallback_departments[0][
+                            "target_repository"
+                        ],
+                        "estimated_hours": 6,
+                    }
+                )
+
+            return fallback_departments
+
+    def _get_department_dependencies(self) -> Dict[str, List[str]]:
+        """Get standard dependencies between departments."""
+        return {
+            "frontend": ["backend"],  # Frontend usually depends on backend APIs
+            "testing": ["backend", "frontend"],  # Testing depends on implementation
+            "devops": [
+                "backend",
+                "frontend",
+                "testing",
+            ],  # DevOps comes after implementation
+        }
+
     def get_story_status(self, story_id: str) -> Optional[Dict[str, Any]]:
         """Get status of a story by ID."""
         # First check the hierarchical database

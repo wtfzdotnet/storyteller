@@ -25,8 +25,8 @@ class TestWebhookHandlerPipeline:
 
     def setup_method(self):
         """Set up test fixtures."""
-        from config import PipelineRetryConfig, EscalationConfig
-        
+        from config import EscalationConfig, PipelineRetryConfig
+
         self.config = Config(
             github_token="test_token",
             repositories={},
@@ -43,7 +43,7 @@ class TestWebhookHandlerPipeline:
             self.handler = WebhookHandler(self.config)
             self.mock_db = mock_db.return_value
             self.mock_monitor = mock_monitor.return_value
-            
+
             # Set up the config on the mocked monitor
             self.mock_monitor.config = self.config
 

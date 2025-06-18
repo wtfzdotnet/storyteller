@@ -814,7 +814,9 @@ class RetryAttempt:
             "repository": self.repository,
             "attempt_number": self.attempt_number,
             "attempted_at": self.attempted_at.isoformat(),
-            "completed_at": self.completed_at.isoformat() if self.completed_at else None,
+            "completed_at": (
+                self.completed_at.isoformat() if self.completed_at else None
+            ),
             "success": self.success,
             "error_message": self.error_message,
             "retry_delay_seconds": self.retry_delay_seconds,
@@ -884,8 +886,14 @@ class EscalationRecord:
             failure_count=data["failure_count"],
             escalated_at=datetime.fromisoformat(data["escalated_at"]),
             escalation_level=data["escalation_level"],
-            contacts_notified=json.loads(data["contacts_notified"]) if data["contacts_notified"] else [],
-            channels_used=json.loads(data["channels_used"]) if data["channels_used"] else [],
+            contacts_notified=(
+                json.loads(data["contacts_notified"])
+                if data["contacts_notified"]
+                else []
+            ),
+            channels_used=(
+                json.loads(data["channels_used"]) if data["channels_used"] else []
+            ),
             resolved=data["resolved"],
             resolved_at=(
                 datetime.fromisoformat(data["resolved_at"])

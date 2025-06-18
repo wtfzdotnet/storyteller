@@ -92,8 +92,10 @@ class Config:
     webhook_secret: Optional[str] = None
 
     # Pipeline Retry Configuration
-    pipeline_retry_config: PipelineRetryConfig = field(default_factory=PipelineRetryConfig)
-    
+    pipeline_retry_config: PipelineRetryConfig = field(
+        default_factory=PipelineRetryConfig
+    )
+
     # Escalation Configuration
     escalation_config: EscalationConfig = field(default_factory=EscalationConfig)
 
@@ -193,7 +195,9 @@ def load_config() -> Config:
                 enabled=escalation_data.get("enabled", True),
                 escalation_threshold=escalation_data.get("escalation_threshold", 5),
                 escalation_contacts=escalation_data.get("escalation_contacts", []),
-                escalation_channels=escalation_data.get("escalation_channels", ["github_issue"]),
+                escalation_channels=escalation_data.get(
+                    "escalation_channels", ["github_issue"]
+                ),
                 cooldown_hours=escalation_data.get("cooldown_hours", 6),
             )
 

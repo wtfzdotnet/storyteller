@@ -381,9 +381,14 @@ class WebhookHandler:
             # First, attempt retries for failures that are eligible
             retry_results = []
             for failure in pipeline_run.failures:
-                if failure.retry_count < self.pipeline_monitor.config.pipeline_retry_config.max_retries:
+                if (
+                    failure.retry_count
+                    < self.pipeline_monitor.config.pipeline_retry_config.max_retries
+                ):
                     # Attempt retry for this failure
-                    retry_attempt = await self.pipeline_monitor.retry_failed_pipeline(failure)
+                    retry_attempt = await self.pipeline_monitor.retry_failed_pipeline(
+                        failure
+                    )
                     if retry_attempt:
                         retry_results.append(retry_attempt)
 
@@ -462,7 +467,9 @@ class WebhookHandler:
 
         return len(repeated_failures) > 0
 
-    def _create_failure_notification(self, pipeline_run, retry_results=None, escalation=None) -> str:
+    def _create_failure_notification(
+        self, pipeline_run, retry_results=None, escalation=None
+    ) -> str:
         """Create a notification message for pipeline failures."""
         failure_summary = {}
         for failure in pipeline_run.failures:
@@ -490,7 +497,7 @@ class WebhookHandler:
         if retry_results:
             successful_retries = len([r for r in retry_results if r.success])
             total_retries = len(retry_results)
-            
+
             notification += f"""
 ### Retry Status:
 - **Retry attempts:** {total_retries}
@@ -534,7 +541,9 @@ class WebhookHandler:
 
 """
 
-        notification += "\n@copilot Please investigate and resolve these pipeline failures."
+        notification += (
+            "\n@copilot Please investigate and resolve these pipeline failures."
+        )
 
         return notification
 

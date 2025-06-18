@@ -9,6 +9,7 @@ from config import Config
 from database import DatabaseManager
 from github_handler import GitHubHandler
 from models import (
+    EscalationRecord,
     FailureCategory,
     FailurePattern,
     FailureSeverity,
@@ -16,7 +17,6 @@ from models import (
     PipelineRun,
     PipelineStatus,
     RetryAttempt,
-    EscalationRecord,
 )
 
 logger = logging.getLogger(__name__)
@@ -563,10 +563,13 @@ class PipelineMonitor:
 
         return suggestions.get(category, ["Review logs and fix underlying issue"])
 
-    async def retry_failed_pipeline(self, failure: "PipelineFailure") -> Optional["RetryAttempt"]:
+    async def retry_failed_pipeline(
+        self, failure: "PipelineFailure"
+    ) -> Optional["RetryAttempt"]:
         """Attempt to retry a failed pipeline operation."""
-        from models import RetryAttempt
         import asyncio
+
+        from models import RetryAttempt
 
         # Check if retry is enabled and we haven't exceeded max retries
         if not self.config.pipeline_retry_config.enabled:
@@ -574,14 +577,19 @@ class PipelineMonitor:
             return None
 
         if failure.retry_count >= self.config.pipeline_retry_config.max_retries:
-            logger.info(f"Max retries ({self.config.pipeline_retry_config.max_retries}) exceeded for failure {failure.id}")
+            logger.info(
+                f"Max retries ({self.config.pipeline_retry_config.max_retries}) exceeded for failure {failure.id}"
+            )
             return None
 
         # Calculate delay with exponential backoff
         delay = min(
-            self.config.pipeline_retry_config.initial_delay_seconds * 
-            (self.config.pipeline_retry_config.backoff_multiplier ** failure.retry_count),
-            self.config.pipeline_retry_config.max_delay_seconds
+            self.config.pipeline_retry_config.initial_delay_seconds
+            * (
+                self.config.pipeline_retry_config.backoff_multiplier
+                ** failure.retry_count
+            ),
+            self.config.pipeline_retry_config.max_delay_seconds,
         )
 
         # Create retry attempt record
@@ -595,13 +603,15 @@ class PipelineMonitor:
                 "original_failure_severity": failure.severity.value,
                 "pipeline_id": failure.pipeline_id,
                 "job_name": failure.job_name,
-            }
+            },
         )
 
         # Store the retry attempt
         self.database.store_retry_attempt(retry_attempt)
 
-        logger.info(f"Scheduling retry for failure {failure.id} in {delay} seconds (attempt {retry_attempt.attempt_number})")
+        logger.info(
+            f"Scheduling retry for failure {failure.id} in {delay} seconds (attempt {retry_attempt.attempt_number})"
+        )
 
         try:
             # Wait for the calculated delay
@@ -655,13 +665,16 @@ class PipelineMonitor:
                 # For now, we'll simulate success for these "auto-fixable" issues
                 logger.info(f"Simulating auto-fix for {failure.category.value} issue")
                 return True
-            
+
             # For other failures, we would need to trigger a workflow re-run
             # This would require using the GitHub API to re-run the failed workflow
-            logger.info(f"Would trigger workflow re-run for {failure.category.value} failure")
-            
+            logger.info(
+                f"Would trigger workflow re-run for {failure.category.value} failure"
+            )
+
             # For demonstration purposes, simulate a 50% success rate
             import random
+
             return random.random() > 0.5
 
         except Exception as e:
@@ -692,19 +705,19 @@ class PipelineMonitor:
         # Check if any pattern exceeds escalation threshold
         for pattern, failures in failure_patterns.items():
             if len(failures) >= self.config.escalation_config.escalation_threshold:
-                
+
                 # Check if we've already escalated this pattern recently
                 recent_escalations = self.database.get_recent_escalations(
-                    repository=repository,
-                    days=1,
-                    resolved=False
+                    repository=repository, days=1, resolved=False
                 )
-                
+
                 # Skip if already escalated recently (within cooldown)
                 should_skip = False
                 for escalation in recent_escalations:
                     if pattern in escalation.failure_pattern:
-                        hours_since = (datetime.now(timezone.utc) - escalation.escalated_at).total_seconds() / 3600
+                        hours_since = (
+                            datetime.now(timezone.utc) - escalation.escalated_at
+                        ).total_seconds() / 3600
                         if hours_since < self.config.escalation_config.cooldown_hours:
                             should_skip = True
                             break
@@ -724,22 +737,24 @@ class PipelineMonitor:
                         "failure_ids": [f.id for f in failures],
                         "categories": list(set(f.category.value for f in failures)),
                         "severities": list(set(f.severity.value for f in failures)),
-                    }
+                    },
                 )
 
                 # Store escalation record
                 self.database.store_escalation_record(escalation)
-                
+
                 logger.warning(
                     f"Escalating {len(failures)} persistent failures in {repository} "
                     f"for pattern '{pattern}'"
                 )
-                
+
                 return escalation
 
         return None
 
-    def get_retry_dashboard_data(self, repository: Optional[str] = None, days: int = 7) -> Dict[str, Any]:
+    def get_retry_dashboard_data(
+        self, repository: Optional[str] = None, days: int = 7
+    ) -> Dict[str, Any]:
         """Get dashboard data for retry attempts and escalations."""
         try:
             # Get recent retry attempts
@@ -756,7 +771,9 @@ class PipelineMonitor:
             total_retries = len(retry_attempts)
             successful_retries = len([r for r in retry_attempts if r.success])
             failed_retries = total_retries - successful_retries
-            success_rate = (successful_retries / total_retries * 100) if total_retries > 0 else 0
+            success_rate = (
+                (successful_retries / total_retries * 100) if total_retries > 0 else 0
+            )
 
             # Calculate escalation statistics
             total_escalations = len(escalations)

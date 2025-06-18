@@ -369,7 +369,7 @@ class DatabaseManager:
         conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_pipeline_failures_detected_at ON pipeline_failures (detected_at)"
         )
-        
+
         # Create indexes for retry attempts and escalation records
         conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_retry_attempts_failure_id ON retry_attempts (failure_id)"
@@ -1609,7 +1609,10 @@ class DatabaseManager:
                 return False
 
     def get_recent_escalations(
-        self, repository: Optional[str] = None, days: int = 30, resolved: Optional[bool] = None
+        self,
+        repository: Optional[str] = None,
+        days: int = 30,
+        resolved: Optional[bool] = None,
     ) -> List:
         """Get recent escalation records from the database."""
         from models import EscalationRecord
@@ -1654,7 +1657,9 @@ class DatabaseManager:
                 WHERE repository = ? 
                 AND failure_message LIKE ? 
                 AND detected_at >= datetime('now', '-{} hours')
-                """.format(hours),
+                """.format(
+                    hours
+                ),
                 (repository, f"%{failure_pattern}%"),
             )
             return cursor.fetchone()[0]

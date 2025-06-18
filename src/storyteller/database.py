@@ -11,7 +11,12 @@ from models import (
     Conversation,
     ConversationParticipant,
     Epic,
+    FailureCategory,
+    FailurePattern,
+    FailureSeverity,
     Message,
+    PipelineFailure,
+    PipelineRun,
     StoryHierarchy,
     StoryStatus,
     StoryType,
@@ -165,6 +170,9 @@ class DatabaseManager:
         # Create conversation-related tables
         self.create_conversation_schema(conn)
 
+        # Create pipeline monitoring tables
+        self.create_pipeline_monitoring_schema(conn)
+
         conn.commit()
 
     def create_conversation_schema(self, conn: sqlite3.Connection):
@@ -238,6 +246,89 @@ class DatabaseManager:
         )
         conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_messages_repository ON conversation_messages (repository_context)"
+        )
+
+    def create_pipeline_monitoring_schema(self, conn: sqlite3.Connection):
+        """Create database schema for pipeline monitoring."""
+
+        # Pipeline runs table
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS pipeline_runs (
+                id TEXT PRIMARY KEY,
+                repository TEXT NOT NULL,
+                branch TEXT NOT NULL,
+                commit_sha TEXT NOT NULL,
+                workflow_name TEXT NOT NULL,
+                status TEXT NOT NULL CHECK (status IN ('pending', 'in_progress', 'success', 'failure', 'cancelled', 'skipped')),
+                started_at TEXT NOT NULL,
+                completed_at TEXT,
+                metadata TEXT DEFAULT '{}'
+            )
+        """
+        )
+
+        # Pipeline failures table
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS pipeline_failures (
+                id TEXT PRIMARY KEY,
+                repository TEXT NOT NULL,
+                branch TEXT NOT NULL,
+                commit_sha TEXT NOT NULL,
+                pipeline_id TEXT NOT NULL,
+                job_name TEXT NOT NULL,
+                step_name TEXT NOT NULL,
+                failure_message TEXT NOT NULL,
+                failure_logs TEXT DEFAULT '',
+                category TEXT NOT NULL CHECK (category IN ('linting', 'formatting', 'testing', 'build', 'deployment', 'dependency', 'timeout', 'infrastructure', 'unknown')),
+                severity TEXT NOT NULL CHECK (severity IN ('low', 'medium', 'high', 'critical')),
+                detected_at TEXT NOT NULL,
+                resolved_at TEXT,
+                retry_count INTEGER DEFAULT 0,
+                max_retries INTEGER DEFAULT 3,
+                metadata TEXT DEFAULT '{}',
+
+                FOREIGN KEY (pipeline_id) REFERENCES pipeline_runs (id) ON DELETE CASCADE
+            )
+        """
+        )
+
+        # Failure patterns table
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS failure_patterns (
+                pattern_id TEXT PRIMARY KEY,
+                category TEXT NOT NULL CHECK (category IN ('linting', 'formatting', 'testing', 'build', 'deployment', 'dependency', 'timeout', 'infrastructure', 'unknown')),
+                description TEXT NOT NULL,
+                failure_count INTEGER DEFAULT 0,
+                repositories TEXT DEFAULT '[]',
+                first_seen TEXT NOT NULL,
+                last_seen TEXT NOT NULL,
+                resolution_suggestions TEXT DEFAULT '[]',
+                metadata TEXT DEFAULT '{}'
+            )
+        """
+        )
+
+        # Create indexes for pipeline monitoring
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_pipeline_runs_repository ON pipeline_runs (repository)"
+        )
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_pipeline_runs_status ON pipeline_runs (status)"
+        )
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_pipeline_failures_repository ON pipeline_failures (repository)"
+        )
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_pipeline_failures_category ON pipeline_failures (category)"
+        )
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_pipeline_failures_severity ON pipeline_failures (severity)"
+        )
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_pipeline_failures_detected_at ON pipeline_failures (detected_at)"
         )
 
     def save_story(self, story: Union[Epic, UserStory, SubStory]) -> str:
@@ -1211,6 +1302,118 @@ class DatabaseManager:
                 return False
 
 
+    # Pipeline monitoring methods
+
+    def store_pipeline_run(self, pipeline_run) -> bool:
+        """Store a pipeline run in the database."""
+        with self.get_connection() as conn:
+            try:
+                data = pipeline_run.to_dict()
+                columns = ", ".join(data.keys())
+                placeholders = ", ".join(["?" for _ in data])
+                
+                conn.execute(
+                    f"INSERT OR REPLACE INTO pipeline_runs ({columns}) VALUES ({placeholders})",
+                    list(data.values()),
+                )
+                return True
+            except Exception as e:
+                logger.error(f"Failed to store pipeline run: {e}")
+                return False
+
+    def store_pipeline_failure(self, failure) -> bool:
+        """Store a pipeline failure in the database."""
+        with self.get_connection() as conn:
+            try:
+                data = failure.to_dict()
+                columns = ", ".join(data.keys())
+                placeholders = ", ".join(["?" for _ in data])
+                
+                conn.execute(
+                    f"INSERT OR REPLACE INTO pipeline_failures ({columns}) VALUES ({placeholders})",
+                    list(data.values()),
+                )
+                return True
+            except Exception as e:
+                logger.error(f"Failed to store pipeline failure: {e}")
+                return False
+
+    def store_failure_pattern(self, pattern) -> bool:
+        """Store a failure pattern in the database."""
+        with self.get_connection() as conn:
+            try:
+                data = pattern.to_dict()
+                columns = ", ".join(data.keys())
+                placeholders = ", ".join(["?" for _ in data])
+                
+                conn.execute(
+                    f"INSERT OR REPLACE INTO failure_patterns ({columns}) VALUES ({placeholders})",
+                    list(data.values()),
+                )
+                return True
+            except Exception as e:
+                logger.error(f"Failed to store failure pattern: {e}")
+                return False
+
+    def get_recent_pipeline_failures(self, repository: Optional[str] = None, days: int = 7) -> List:
+        """Get recent pipeline failures from the database."""
+        from models import PipelineFailure, FailureCategory, FailureSeverity
+        
+        with self.get_connection() as conn:
+            query = """
+                SELECT * FROM pipeline_failures 
+                WHERE detected_at >= datetime('now', '-{} days')
+            """.format(days)
+            params = []
+            
+            if repository:
+                query += " AND repository = ?"
+                params.append(repository)
+                
+            query += " ORDER BY detected_at DESC"
+            
+            cursor = conn.execute(query, params)
+            failures = []
+            
+            for row in cursor.fetchall():
+                failure = PipelineFailure.from_dict(dict(row))
+                failures.append(failure)
+                
+            return failures
+
+    def get_failure_patterns(self, days: int = 30) -> List:
+        """Get failure patterns from the database."""
+        from models import FailurePattern, FailureCategory
+        import json
+        
+        with self.get_connection() as conn:
+            query = """
+                SELECT * FROM failure_patterns 
+                WHERE last_seen >= datetime('now', '-{} days')
+                ORDER BY failure_count DESC
+            """.format(days)
+            
+            cursor = conn.execute(query)
+            patterns = []
+            
+            for row in cursor.fetchall():
+                row_dict = dict(row)
+                pattern = FailurePattern(
+                    pattern_id=row_dict["pattern_id"],
+                    category=FailureCategory(row_dict["category"]),
+                    description=row_dict["description"],
+                    failure_count=row_dict["failure_count"],
+                    repositories=json.loads(row_dict["repositories"]),
+                    first_seen=datetime.fromisoformat(row_dict["first_seen"]),
+                    last_seen=datetime.fromisoformat(row_dict["last_seen"]),
+                    resolution_suggestions=json.loads(row_dict["resolution_suggestions"]),
+                    metadata=json.loads(row_dict["metadata"]),
+                )
+                patterns.append(pattern)
+                
+            return patterns
+
+
 def run_migrations(db_path: str = "storyteller.db"):
     """Run database migrations to set up the schema."""
     print(f"Setting up database schema at {db_path}...")
@@ -1226,9 +1429,13 @@ def run_migrations(db_path: str = "storyteller.db"):
             "stories",
             "story_relationships",
             "github_issues",
+            "status_transitions",
             "conversations",
             "conversation_participants",
             "conversation_messages",
+            "pipeline_runs",
+            "pipeline_failures",
+            "failure_patterns",
         ]
         missing_tables = [t for t in expected_tables if t not in tables]
 

@@ -622,3 +622,164 @@ class ProjectField:
             "data_type": self.data_type,
             "options": self.options,
         }
+
+
+# Pipeline Monitoring Models
+
+
+class PipelineStatus(Enum):
+    """Pipeline execution status."""
+
+    PENDING = "pending"
+    IN_PROGRESS = "in_progress"
+    SUCCESS = "success"
+    FAILURE = "failure"
+    CANCELLED = "cancelled"
+    SKIPPED = "skipped"
+
+
+class FailureSeverity(Enum):
+    """Severity levels for pipeline failures."""
+
+    LOW = "low"
+    MEDIUM = "medium"
+    HIGH = "high"
+    CRITICAL = "critical"
+
+
+class FailureCategory(Enum):
+    """Categories of pipeline failures."""
+
+    LINTING = "linting"
+    FORMATTING = "formatting"
+    TESTING = "testing"
+    BUILD = "build"
+    DEPLOYMENT = "deployment"
+    DEPENDENCY = "dependency"
+    TIMEOUT = "timeout"
+    INFRASTRUCTURE = "infrastructure"
+    UNKNOWN = "unknown"
+
+
+@dataclass
+class PipelineFailure:
+    """Represents a pipeline failure with analysis and context."""
+
+    id: str = field(default_factory=lambda: f"failure_{uuid.uuid4().hex[:8]}")
+    repository: str = ""
+    branch: str = ""
+    commit_sha: str = ""
+    pipeline_id: str = ""
+    job_name: str = ""
+    step_name: str = ""
+    failure_message: str = ""
+    failure_logs: str = ""
+    category: FailureCategory = FailureCategory.UNKNOWN
+    severity: FailureSeverity = FailureSeverity.MEDIUM
+    detected_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    resolved_at: Optional[datetime] = None
+    retry_count: int = 0
+    max_retries: int = 3
+    metadata: Dict[str, Any] = field(default_factory=dict)
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to dictionary for storage."""
+        return {
+            "id": self.id,
+            "repository": self.repository,
+            "branch": self.branch,
+            "commit_sha": self.commit_sha,
+            "pipeline_id": self.pipeline_id,
+            "job_name": self.job_name,
+            "step_name": self.step_name,
+            "failure_message": self.failure_message,
+            "failure_logs": self.failure_logs,
+            "category": self.category.value,
+            "severity": self.severity.value,
+            "detected_at": self.detected_at.isoformat(),
+            "resolved_at": self.resolved_at.isoformat() if self.resolved_at else None,
+            "retry_count": self.retry_count,
+            "max_retries": self.max_retries,
+            "metadata": json.dumps(self.metadata),
+        }
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "PipelineFailure":
+        """Create from dictionary."""
+        return cls(
+            id=data["id"],
+            repository=data["repository"],
+            branch=data["branch"],
+            commit_sha=data["commit_sha"],
+            pipeline_id=data["pipeline_id"],
+            job_name=data["job_name"],
+            step_name=data["step_name"],
+            failure_message=data["failure_message"],
+            failure_logs=data["failure_logs"],
+            category=FailureCategory(data["category"]),
+            severity=FailureSeverity(data["severity"]),
+            detected_at=datetime.fromisoformat(data["detected_at"]),
+            resolved_at=datetime.fromisoformat(data["resolved_at"]) if data["resolved_at"] else None,
+            retry_count=data["retry_count"],
+            max_retries=data["max_retries"],
+            metadata=json.loads(data["metadata"]) if data["metadata"] else {},
+        )
+
+
+@dataclass
+class PipelineRun:
+    """Represents a complete pipeline run across all jobs."""
+
+    id: str = field(default_factory=lambda: f"run_{uuid.uuid4().hex[:8]}")
+    repository: str = ""
+    branch: str = ""
+    commit_sha: str = ""
+    workflow_name: str = ""
+    status: PipelineStatus = PipelineStatus.PENDING
+    started_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    completed_at: Optional[datetime] = None
+    failures: List[PipelineFailure] = field(default_factory=list)
+    metadata: Dict[str, Any] = field(default_factory=dict)
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to dictionary for storage."""
+        return {
+            "id": self.id,
+            "repository": self.repository,
+            "branch": self.branch,
+            "commit_sha": self.commit_sha,
+            "workflow_name": self.workflow_name,
+            "status": self.status.value,
+            "started_at": self.started_at.isoformat(),
+            "completed_at": self.completed_at.isoformat() if self.completed_at else None,
+            "metadata": json.dumps(self.metadata),
+        }
+
+
+@dataclass
+class FailurePattern:
+    """Represents a detected pattern in pipeline failures."""
+
+    pattern_id: str = field(default_factory=lambda: f"pattern_{uuid.uuid4().hex[:8]}")
+    category: FailureCategory = FailureCategory.UNKNOWN
+    description: str = ""
+    failure_count: int = 0
+    repositories: List[str] = field(default_factory=list)
+    first_seen: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    last_seen: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    resolution_suggestions: List[str] = field(default_factory=list)
+    metadata: Dict[str, Any] = field(default_factory=dict)
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to dictionary for storage."""
+        return {
+            "pattern_id": self.pattern_id,
+            "category": self.category.value,
+            "description": self.description,
+            "failure_count": self.failure_count,
+            "repositories": json.dumps(self.repositories),
+            "first_seen": self.first_seen.isoformat(),
+            "last_seen": self.last_seen.isoformat(),
+            "resolution_suggestions": json.dumps(self.resolution_suggestions),
+            "metadata": json.dumps(self.metadata),
+        }

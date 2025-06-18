@@ -319,7 +319,10 @@ Respond with a JSON object containing:
             raise
 
     async def synthesize_analyses(
-        self, story_content: str, expert_analyses: List[StoryAnalysis], context: Optional[Dict[str, Any]] = None
+        self,
+        story_content: str,
+        expert_analyses: List[StoryAnalysis],
+        context: Optional[Dict[str, Any]] = None,
     ) -> str:
         """Synthesize multiple expert analyses into a comprehensive analysis with cross-repository considerations."""
 
@@ -336,7 +339,9 @@ Respond with a JSON object containing:
 
         try:
             response = await self.llm_handler.synthesize_expert_analyses(
-                story_content=story_content, expert_analyses=analysis_data, context=context
+                story_content=story_content,
+                expert_analyses=analysis_data,
+                context=context,
             )
 
             return response.content
@@ -357,34 +362,40 @@ Respond with a JSON object containing:
             if context and "repository_contexts" in context:
                 repo_contexts = context["repository_contexts"]
                 if repo_contexts:
-                    synthesis_parts.extend([
-                        "## Repository Context Analysis",
-                        "",
-                        "Target repositories and technical considerations:",
-                        ""
-                    ])
-                    
+                    synthesis_parts.extend(
+                        [
+                            "## Repository Context Analysis",
+                            "",
+                            "Target repositories and technical considerations:",
+                            "",
+                        ]
+                    )
+
                     for repo_ctx in repo_contexts:
-                        synthesis_parts.extend([
-                            f"### {repo_ctx.get('repository', 'Unknown Repository')} ({repo_ctx.get('repo_type', 'unknown')})",
-                            f"- **Description**: {repo_ctx.get('description', 'No description')}",
-                            f"- **Key Technologies**: {', '.join(repo_ctx.get('key_technologies', [])[:5])}",
-                            f"- **Dependencies**: {', '.join(repo_ctx.get('dependencies', [])[:5])}",
-                            ""
-                        ])
+                        synthesis_parts.extend(
+                            [
+                                f"### {repo_ctx.get('repository', 'Unknown Repository')} ({repo_ctx.get('repo_type', 'unknown')})",
+                                f"- **Description**: {repo_ctx.get('description', 'No description')}",
+                                f"- **Key Technologies**: {', '.join(repo_ctx.get('key_technologies', [])[:5])}",
+                                f"- **Dependencies**: {', '.join(repo_ctx.get('dependencies', [])[:5])}",
+                                "",
+                            ]
+                        )
 
             # Add cross-repository insights if available
             if context and "cross_repository_insights" in context:
                 insights = context["cross_repository_insights"]
                 if insights:
-                    synthesis_parts.extend([
-                        "## Cross-Repository Impact Analysis",
-                        "",
-                        f"- **Shared Technologies**: {', '.join(insights.get('shared_languages', []))}",
-                        f"- **Common Patterns**: {', '.join(insights.get('common_patterns', []))}",
-                        f"- **Integration Points**: {', '.join(insights.get('integration_points', []))}",
-                        ""
-                    ])
+                    synthesis_parts.extend(
+                        [
+                            "## Cross-Repository Impact Analysis",
+                            "",
+                            f"- **Shared Technologies**: {', '.join(insights.get('shared_languages', []))}",
+                            f"- **Common Patterns**: {', '.join(insights.get('common_patterns', []))}",
+                            f"- **Integration Points**: {', '.join(insights.get('integration_points', []))}",
+                            "",
+                        ]
+                    )
 
             for analysis in expert_analyses:
                 synthesis_parts.extend(
@@ -439,7 +450,7 @@ Respond with a JSON object containing:
             # Gather repository context for context-aware generation
             repository_contexts = []
             cross_repository_insights = {}
-            
+
             try:
                 # Get individual repository contexts
                 for repo_key in target_repositories:
@@ -453,11 +464,15 @@ Respond with a JSON object containing:
 
                 # Get multi-repository context and cross-repo insights if multiple repos
                 if len(target_repositories) > 1:
-                    multi_context = await self.context_reader.get_multi_repository_context(
-                        repository_keys=target_repositories, max_files_per_repo=10
+                    multi_context = (
+                        await self.context_reader.get_multi_repository_context(
+                            repository_keys=target_repositories, max_files_per_repo=10
+                        )
                     )
                     cross_repository_insights = multi_context.cross_repository_insights
-                    logger.info(f"Analyzed cross-repository insights: {list(cross_repository_insights.keys())}")
+                    logger.info(
+                        f"Analyzed cross-repository insights: {list(cross_repository_insights.keys())}"
+                    )
 
             except Exception as e:
                 logger.warning(f"Failed to gather repository context: {e}")
@@ -467,30 +482,38 @@ Respond with a JSON object containing:
 
             # Prepare enhanced context for expert analysis
             enhanced_context = story_request.context or {}
-            enhanced_context.update({
-                "repository_contexts": [
-                    {
-                        "repository": ctx.repository,
-                        "repo_type": ctx.repo_type,
-                        "description": ctx.description,
-                        "key_technologies": [
-                            f.language for f in ctx.key_files[:5]  # Top 5 files
-                        ],
-                        "dependencies": ctx.dependencies[:10],  # Top 10 dependencies
-                        "structure_summary": {
-                            k: len(v) if isinstance(v, list) else v
-                            for k, v in ctx.structure.items()
-                        },
-                        "important_files": [
-                            {"path": f.path, "type": f.file_type, "importance": f.importance_score}
-                            for f in ctx.key_files[:3]  # Top 3 most important files
-                        ]
-                    }
-                    for ctx in repository_contexts
-                ],
-                "cross_repository_insights": cross_repository_insights,
-                "target_repositories": target_repositories
-            })
+            enhanced_context.update(
+                {
+                    "repository_contexts": [
+                        {
+                            "repository": ctx.repository,
+                            "repo_type": ctx.repo_type,
+                            "description": ctx.description,
+                            "key_technologies": [
+                                f.language for f in ctx.key_files[:5]  # Top 5 files
+                            ],
+                            "dependencies": ctx.dependencies[
+                                :10
+                            ],  # Top 10 dependencies
+                            "structure_summary": {
+                                k: len(v) if isinstance(v, list) else v
+                                for k, v in ctx.structure.items()
+                            },
+                            "important_files": [
+                                {
+                                    "path": f.path,
+                                    "type": f.file_type,
+                                    "importance": f.importance_score,
+                                }
+                                for f in ctx.key_files[:3]  # Top 3 most important files
+                            ],
+                        }
+                        for ctx in repository_contexts
+                    ],
+                    "cross_repository_insights": cross_repository_insights,
+                    "target_repositories": target_repositories,
+                }
+            )
 
             # Determine expert roles
             expert_roles = (
@@ -510,9 +533,9 @@ Respond with a JSON object containing:
 
             # Synthesize analyses with cross-repository considerations
             synthesized_analysis = await self.synthesize_analyses(
-                story_content=story_request.content, 
+                story_content=story_request.content,
                 expert_analyses=expert_analyses,
-                context=enhanced_context
+                context=enhanced_context,
             )
 
             # Create processed story
@@ -531,19 +554,22 @@ Respond with a JSON object containing:
                             "repository": ctx.repository,
                             "repo_type": ctx.repo_type,
                             "file_count": ctx.file_count,
-                            "languages": ctx.languages
+                            "languages": ctx.languages,
                         }
                         for ctx in repository_contexts
                     ],
                     "cross_repository_insights": cross_repository_insights,
-                    "context_quality": len(repository_contexts) / max(len(target_repositories), 1)
+                    "context_quality": len(repository_contexts)
+                    / max(len(target_repositories), 1),
                 },
             )
 
             # Store in processing queue
             self._processing_queue[story_id] = processed_story
 
-            logger.info(f"Completed processing story {story_id} with context from {len(repository_contexts)} repositories")
+            logger.info(
+                f"Completed processing story {story_id} with context from {len(repository_contexts)} repositories"
+            )
             return processed_story
 
         except Exception as e:
@@ -985,24 +1011,38 @@ Estimated Duration: {epic.estimated_duration_weeks} weeks"""
         try:
             for repo_key in user_story.target_repositories:
                 if repo_key in self.processor.config.repositories:
-                    repo_context = await self.processor.context_reader.get_repository_context(
-                        repo_key, max_files=10, use_cache=True
+                    repo_context = (
+                        await self.processor.context_reader.get_repository_context(
+                            repo_key, max_files=10, use_cache=True
+                        )
                     )
                     if repo_context:
-                        repository_contexts.append({
-                            "repository": repo_context.repository,
-                            "repo_type": repo_context.repo_type,
-                            "description": repo_context.description,
-                            "key_technologies": [f.language for f in repo_context.key_files[:5]],
-                            "dependencies": repo_context.dependencies[:10],
-                            "important_files": [
-                                {"path": f.path, "type": f.file_type, "importance": f.importance_score}
-                                for f in repo_context.key_files[:3]
-                            ]
-                        })
-                        logger.info(f"Gathered repository context for sub-story generation: {repo_key}")
+                        repository_contexts.append(
+                            {
+                                "repository": repo_context.repository,
+                                "repo_type": repo_context.repo_type,
+                                "description": repo_context.description,
+                                "key_technologies": [
+                                    f.language for f in repo_context.key_files[:5]
+                                ],
+                                "dependencies": repo_context.dependencies[:10],
+                                "important_files": [
+                                    {
+                                        "path": f.path,
+                                        "type": f.file_type,
+                                        "importance": f.importance_score,
+                                    }
+                                    for f in repo_context.key_files[:3]
+                                ],
+                            }
+                        )
+                        logger.info(
+                            f"Gathered repository context for sub-story generation: {repo_key}"
+                        )
         except Exception as e:
-            logger.warning(f"Failed to gather repository context for sub-story generation: {e}")
+            logger.warning(
+                f"Failed to gather repository context for sub-story generation: {e}"
+            )
             repository_contexts = []
 
         # Analyze the user story to determine relevant departments with repository context
@@ -1071,9 +1111,9 @@ Estimated Duration: {epic.estimated_duration_weeks} weeks"""
         # Build context-aware department descriptions
         dept_descriptions = {
             "backend": "API services, database operations, business logic",
-            "frontend": "User interfaces, client applications, user experience", 
+            "frontend": "User interfaces, client applications, user experience",
             "testing": "Quality assurance, test automation, validation",
-            "devops": "Infrastructure, deployment, monitoring, security"
+            "devops": "Infrastructure, deployment, monitoring, security",
         }
 
         # Enhance descriptions with repository context
@@ -1148,82 +1188,122 @@ Story Points: {user_story.story_points}"""
             return departments_analysis
 
         except (json.JSONDecodeError, KeyError) as e:
-            logger.warning(f"Failed to parse department analysis, using context-aware fallback: {e}")
+            logger.warning(
+                f"Failed to parse department analysis, using context-aware fallback: {e}"
+            )
             # Enhanced fallback with repository context
             fallback_departments = []
 
             if "backend" in user_story.target_repositories:
                 backend_context = next(
-                    (ctx for ctx in (repository_contexts or []) if ctx.get("repo_type") == "backend"),
-                    {}
+                    (
+                        ctx
+                        for ctx in (repository_contexts or [])
+                        if ctx.get("repo_type") == "backend"
+                    ),
+                    {},
                 )
-                
+
                 tasks = ["API development", "Database operations", "Business logic"]
                 tech_context = "Standard backend implementation"
-                
+
                 # Enhance tasks based on repository context
                 if backend_context:
                     dependencies = backend_context.get("dependencies", [])
                     if any("fastapi" in dep.lower() for dep in dependencies):
-                        tasks.extend(["FastAPI route implementation", "Pydantic model validation"])
+                        tasks.extend(
+                            [
+                                "FastAPI route implementation",
+                                "Pydantic model validation",
+                            ]
+                        )
                         tech_context = "FastAPI-based API development"
                     elif any("flask" in dep.lower() for dep in dependencies):
-                        tasks.extend(["Flask route implementation", "Request validation"])
+                        tasks.extend(
+                            ["Flask route implementation", "Request validation"]
+                        )
                         tech_context = "Flask-based API development"
-                    
-                    if any(db in dep.lower() for dep in dependencies for db in ["postgres", "mysql", "sqlite"]):
+
+                    if any(
+                        db in dep.lower()
+                        for dep in dependencies
+                        for db in ["postgres", "mysql", "sqlite"]
+                    ):
                         tasks.append("Database schema and migration management")
-                
-                fallback_departments.append({
-                    "department": "backend",
-                    "title": f"Backend Implementation: {user_story.title}",
-                    "description": "Implement backend components for this user story",
-                    "tasks": tasks,
-                    "dependencies": [],
-                    "target_repository": "backend",
-                    "estimated_hours": 8,
-                    "technical_context": tech_context
-                })
+
+                fallback_departments.append(
+                    {
+                        "department": "backend",
+                        "title": f"Backend Implementation: {user_story.title}",
+                        "description": "Implement backend components for this user story",
+                        "tasks": tasks,
+                        "dependencies": [],
+                        "target_repository": "backend",
+                        "estimated_hours": 8,
+                        "technical_context": tech_context,
+                    }
+                )
 
             if "frontend" in user_story.target_repositories:
                 frontend_context = next(
-                    (ctx for ctx in (repository_contexts or []) if ctx.get("repo_type") == "frontend"),
-                    {}
+                    (
+                        ctx
+                        for ctx in (repository_contexts or [])
+                        if ctx.get("repo_type") == "frontend"
+                    ),
+                    {},
                 )
-                
+
                 tasks = ["UI development", "API integration", "User experience"]
                 tech_context = "Standard frontend implementation"
-                
+
                 # Enhance tasks based on repository context
                 if frontend_context:
                     dependencies = frontend_context.get("dependencies", [])
                     if any("react" in dep.lower() for dep in dependencies):
-                        tasks.extend(["React component development", "State management with hooks"])
+                        tasks.extend(
+                            [
+                                "React component development",
+                                "State management with hooks",
+                            ]
+                        )
                         tech_context = "React-based frontend development"
                     elif any("vue" in dep.lower() for dep in dependencies):
                         tasks.extend(["Vue component development", "State management"])
                         tech_context = "Vue.js-based frontend development"
-                    
-                    if any(style in dep.lower() for dep in dependencies for style in ["styled", "tailwind", "material"]):
+
+                    if any(
+                        style in dep.lower()
+                        for dep in dependencies
+                        for style in ["styled", "tailwind", "material"]
+                    ):
                         tasks.append("Responsive styling and theme implementation")
 
-                fallback_departments.append({
-                    "department": "frontend",
-                    "title": f"Frontend Implementation: {user_story.title}",
-                    "description": "Implement frontend components for this user story",
-                    "tasks": tasks,
-                    "dependencies": (
-                        ["backend"] if "backend" in user_story.target_repositories else []
-                    ),
-                    "target_repository": "frontend",
-                    "estimated_hours": 12,
-                    "technical_context": tech_context
-                })
+                fallback_departments.append(
+                    {
+                        "department": "frontend",
+                        "title": f"Frontend Implementation: {user_story.title}",
+                        "description": "Implement frontend components for this user story",
+                        "tasks": tasks,
+                        "dependencies": (
+                            ["backend"]
+                            if "backend" in user_story.target_repositories
+                            else []
+                        ),
+                        "target_repository": "frontend",
+                        "estimated_hours": 12,
+                        "technical_context": tech_context,
+                    }
+                )
 
             # Always include testing if there are other departments
             if fallback_departments:
-                testing_tasks = ["Test planning", "Test implementation", "Quality validation"]
-                
+                testing_tasks = [
+                    "Test planning",
+                    "Test implementation",
+                    "Quality validation",
+                ]
+
                 # Add technology-specific testing tasks
                 if repository_contexts:
                     for ctx in repository_contexts:
@@ -1233,16 +1313,20 @@ Story Points: {user_story.story_points}"""
                         if any("jest" in dep.lower() for dep in dependencies):
                             testing_tasks.append("JavaScript unit tests with Jest")
 
-                fallback_departments.append({
-                    "department": "testing",
-                    "title": f"Testing: {user_story.title}",
-                    "description": "Test all components of this user story",
-                    "tasks": testing_tasks,
-                    "dependencies": [d["department"] for d in fallback_departments],
-                    "target_repository": fallback_departments[0]["target_repository"],
-                    "estimated_hours": 6,
-                    "technical_context": "Comprehensive testing across technology stack"
-                })
+                fallback_departments.append(
+                    {
+                        "department": "testing",
+                        "title": f"Testing: {user_story.title}",
+                        "description": "Test all components of this user story",
+                        "tasks": testing_tasks,
+                        "dependencies": [d["department"] for d in fallback_departments],
+                        "target_repository": fallback_departments[0][
+                            "target_repository"
+                        ],
+                        "estimated_hours": 6,
+                        "technical_context": "Comprehensive testing across technology stack",
+                    }
+                )
 
             return fallback_departments
 

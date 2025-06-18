@@ -321,7 +321,10 @@ Be concise but thorough in your analysis. Focus on aspects most relevant to your
         return await self.generate_response(prompt=prompt, system_prompt=system_prompt)
 
     async def synthesize_expert_analyses(
-        self, story_content: str, expert_analyses: List[Dict[str, Any]], context: Optional[Dict[str, Any]] = None
+        self,
+        story_content: str,
+        expert_analyses: List[Dict[str, Any]],
+        context: Optional[Dict[str, Any]] = None,
     ) -> LLMResponse:
         """Synthesize multiple expert analyses into a comprehensive story analysis with repository context."""
 
@@ -356,34 +359,36 @@ Pay special attention to repository-specific technical details and cross-reposit
         if context and "repository_contexts" in context:
             repo_contexts = context["repository_contexts"]
             if repo_contexts:
-                repo_context_text = "\n".join([
-                    f"Repository: {ctx.get('repository', 'Unknown')} ({ctx.get('repo_type', 'unknown')})\n"
-                    f"- Description: {ctx.get('description', 'No description')}\n"
-                    f"- Key Technologies: {', '.join(ctx.get('key_technologies', [])[:5])}\n"
-                    f"- Dependencies: {', '.join(ctx.get('dependencies', [])[:5])}\n"
-                    f"- Important Files: {', '.join([f['path'] for f in ctx.get('important_files', [])[:3]])}"
-                    for ctx in repo_contexts
-                ])
-                prompt_parts.extend([
-                    "",
-                    f"Repository Context:\n{repo_context_text}"
-                ])
+                repo_context_text = "\n".join(
+                    [
+                        f"Repository: {ctx.get('repository', 'Unknown')} ({ctx.get('repo_type', 'unknown')})\n"
+                        f"- Description: {ctx.get('description', 'No description')}\n"
+                        f"- Key Technologies: {', '.join(ctx.get('key_technologies', [])[:5])}\n"
+                        f"- Dependencies: {', '.join(ctx.get('dependencies', [])[:5])}\n"
+                        f"- Important Files: {', '.join([f['path'] for f in ctx.get('important_files', [])[:3]])}"
+                        for ctx in repo_contexts
+                    ]
+                )
+                prompt_parts.extend(["", f"Repository Context:\n{repo_context_text}"])
 
         # Add cross-repository insights if available
         if context and "cross_repository_insights" in context:
             insights = context["cross_repository_insights"]
             if insights:
-                insights_text = "\n".join([
-                    f"- Shared Technologies: {', '.join(insights.get('shared_languages', []))}",
-                    f"- Common Patterns: {', '.join(insights.get('common_patterns', []))}",
-                    f"- Integration Points: {', '.join(insights.get('integration_points', []))}"
-                ])
-                prompt_parts.extend([
-                    "",
-                    f"Cross-Repository Insights:\n{insights_text}"
-                ])
+                insights_text = "\n".join(
+                    [
+                        f"- Shared Technologies: {', '.join(insights.get('shared_languages', []))}",
+                        f"- Common Patterns: {', '.join(insights.get('common_patterns', []))}",
+                        f"- Integration Points: {', '.join(insights.get('integration_points', []))}",
+                    ]
+                )
+                prompt_parts.extend(
+                    ["", f"Cross-Repository Insights:\n{insights_text}"]
+                )
 
-        prompt_parts.append("\nPlease provide a comprehensive synthesis of these expert analyses, incorporating the repository context and cross-repository considerations.")
+        prompt_parts.append(
+            "\nPlease provide a comprehensive synthesis of these expert analyses, incorporating the repository context and cross-repository considerations."
+        )
 
         prompt = "\n".join(prompt_parts)
         return await self.generate_response(prompt=prompt, system_prompt=system_prompt)

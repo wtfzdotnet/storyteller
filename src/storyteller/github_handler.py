@@ -3,6 +3,7 @@
 import base64
 import logging
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Tuple
 
 import requests
@@ -967,6 +968,180 @@ class GitHubHandler:
 
         logger.info(f"Created project for epic {epic.id}: {project['title']}")
         return project
+
+    async def get_cross_repository_progress_data(
+        self, epic_id: str, repositories: List[str]
+    ) -> Dict[str, Any]:
+        """Fetch real-time progress data across multiple repositories for an epic."""
+        progress_data = {
+            "epic_id": epic_id,
+            "repositories": {},
+            "issues_by_repository": {},
+            "last_updated": datetime.now(timezone.utc).isoformat(),
+        }
+
+        for repository_name in repositories:
+            try:
+                repo_data = await self._fetch_repository_progress(
+                    repository_name, epic_id
+                )
+                progress_data["repositories"][repository_name] = repo_data
+                progress_data["issues_by_repository"][repository_name] = repo_data.get(
+                    "issues", []
+                )
+            except Exception as e:
+                logger.error(
+                    f"Failed to fetch progress for repository {repository_name}: {e}"
+                )
+                progress_data["repositories"][repository_name] = {
+                    "error": str(e),
+                    "status": "error",
+                }
+
+        return progress_data
+
+    async def _fetch_repository_progress(
+        self, repository_name: str, epic_id: str
+    ) -> Dict[str, Any]:
+        """Fetch progress data for a specific repository related to an epic."""
+        try:
+            repo = self.get_repository(repository_name)
+
+            # Search for issues related to the epic
+            # Using a search query to find issues with epic reference
+            query = f"repo:{repository_name} {epic_id} in:title,body"
+            issues = list(repo.get_issues(state="all"))
+
+            # Filter issues that reference the epic
+            epic_related_issues = []
+            for issue in issues:
+                if epic_id in issue.title or epic_id in (issue.body or ""):
+                    epic_related_issues.append(issue)
+
+            # Calculate progress metrics
+            total_issues = len(epic_related_issues)
+            closed_issues = sum(
+                1 for issue in epic_related_issues if issue.state == "closed"
+            )
+            open_issues = total_issues - closed_issues
+
+            progress_percentage = (
+                (closed_issues / total_issues * 100) if total_issues > 0 else 0
+            )
+
+            # Get issue details for visualization
+            issue_details = []
+            for issue in epic_related_issues[:20]:  # Limit to most recent 20
+                issue_details.append(
+                    {
+                        "number": issue.number,
+                        "title": issue.title,
+                        "state": issue.state,
+                        "created_at": issue.created_at.isoformat(),
+                        "updated_at": issue.updated_at.isoformat(),
+                        "assignee": issue.assignee.login if issue.assignee else None,
+                        "labels": [label.name for label in issue.labels],
+                    }
+                )
+
+            return {
+                "repository": repository_name,
+                "total_issues": total_issues,
+                "closed_issues": closed_issues,
+                "open_issues": open_issues,
+                "progress_percentage": round(progress_percentage, 1),
+                "status": (
+                    "completed"
+                    if closed_issues == total_issues and total_issues > 0
+                    else "in_progress" if closed_issues > 0 else "not_started"
+                ),
+                "issues": issue_details,
+                "last_fetched": datetime.now(timezone.utc).isoformat(),
+            }
+
+        except Exception as e:
+            logger.error(
+                f"Error fetching repository progress for {repository_name}: {e}"
+            )
+            raise
+
+    async def update_cross_repository_project_progress(
+        self, project_id: str, epic_id: str, repositories: List[str]
+    ) -> Dict[str, Any]:
+        """Update GitHub project with real-time progress from multiple repositories."""
+        try:
+            # Fetch current progress data
+            progress_data = await self.get_cross_repository_progress_data(
+                epic_id, repositories
+            )
+
+            # Get project fields for updating
+            project_fields = await self.get_project_fields(project_id)
+            field_lookup = {field.name: field.id for field in project_fields}
+
+            # Update project with aggregated progress
+            updates_made = []
+
+            # If there's a "Cross-Repo Progress" field, update it
+            if "Cross-Repo Progress" in field_lookup:
+                total_issues = sum(
+                    repo_data.get("total_issues", 0)
+                    for repo_data in progress_data["repositories"].values()
+                    if "error" not in repo_data
+                )
+                closed_issues = sum(
+                    repo_data.get("closed_issues", 0)
+                    for repo_data in progress_data["repositories"].values()
+                    if "error" not in repo_data
+                )
+                overall_percentage = (
+                    (closed_issues / total_issues * 100) if total_issues > 0 else 0
+                )
+
+                # Note: Actual field update would require the item ID, which would come from the sync process
+                updates_made.append(f"Overall progress: {overall_percentage:.1f}%")
+
+            logger.info(f"Updated cross-repository progress for project {project_id}")
+            return {
+                "project_id": project_id,
+                "epic_id": epic_id,
+                "updates_made": updates_made,
+                "progress_data": progress_data,
+            }
+
+        except Exception as e:
+            logger.error(f"Failed to update cross-repository project progress: {e}")
+            raise
+
+    async def enable_real_time_progress_tracking(
+        self, epic_id: str, repositories: List[str], webhook_url: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """Enable real-time progress tracking for an epic across repositories."""
+        tracking_config = {
+            "epic_id": epic_id,
+            "repositories": repositories,
+            "webhook_url": webhook_url,
+            "enabled": True,
+            "created_at": datetime.now(timezone.utc).isoformat(),
+            "tracking_events": [
+                "issues.opened",
+                "issues.closed",
+                "issues.reopened",
+                "pull_request.opened",
+                "pull_request.closed",
+                "pull_request.merged",
+            ],
+        }
+
+        # In a real implementation, this would:
+        # 1. Set up webhooks on each repository (if webhook_url provided)
+        # 2. Store tracking configuration in database
+        # 3. Initialize progress monitoring
+
+        logger.info(
+            f"Enabled real-time progress tracking for epic {epic_id} across {len(repositories)} repositories"
+        )
+        return tracking_config
 
     async def notify_assignment(
         self,

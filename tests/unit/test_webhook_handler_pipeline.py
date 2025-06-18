@@ -25,10 +25,14 @@ class TestWebhookHandlerPipeline:
 
     def setup_method(self):
         """Set up test fixtures."""
+        from config import EscalationConfig, PipelineRetryConfig
+
         self.config = Config(
             github_token="test_token",
             repositories={},
             default_repository="test",
+            pipeline_retry_config=PipelineRetryConfig(),
+            escalation_config=EscalationConfig(),
         )
 
         # Mock dependencies
@@ -39,6 +43,9 @@ class TestWebhookHandlerPipeline:
             self.handler = WebhookHandler(self.config)
             self.mock_db = mock_db.return_value
             self.mock_monitor = mock_monitor.return_value
+
+            # Set up the config on the mocked monitor
+            self.mock_monitor.config = self.config
 
     @pytest.mark.asyncio
     async def test_handle_workflow_run_event_success(self):
@@ -234,7 +241,7 @@ class TestWebhookHandlerPipeline:
         assert "Linting Issues:" in notification
         assert "Testing Issues:" in notification
         assert "@copilot" in notification
-        assert "Failure Count: 2" in notification
+        assert "**Failure Count:** 2" in notification
 
     @pytest.mark.asyncio
     async def test_find_related_issues_with_issues(self):
@@ -276,6 +283,10 @@ class TestWebhookHandlerPipeline:
         ]
         pipeline_run = PipelineRun(repository="test/repo", failures=failures)
 
+        # Mock the retry and escalation methods
+        self.mock_monitor.retry_failed_pipeline = AsyncMock(return_value=None)
+        self.mock_monitor.check_for_escalation = MagicMock(return_value=None)
+
         # Mock related issues and comment addition
         with patch.object(self.handler, "_find_related_issues") as mock_find_issues:
             mock_find_issues.return_value = [42]
@@ -308,6 +319,14 @@ class TestWebhookHandlerPipeline:
         ]
         pipeline_run = PipelineRun(repository="test/repo", failures=failures)
 
+        # Mock the retry and escalation methods
+        self.mock_monitor.retry_failed_pipeline = AsyncMock(return_value=None)
+        self.mock_monitor.check_for_escalation = MagicMock(return_value=None)
+
         result = await self.handler._handle_pipeline_failures(pipeline_run, "test/repo")
 
-        assert result is None
+        # Should return result but with notification_sent = False
+        assert result is not None
+        assert result["notification_sent"] == False
+        assert result["retry_attempts"] == 0
+        assert result["escalation_triggered"] == False

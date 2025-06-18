@@ -39,6 +39,29 @@ class WebhookConfig:
 
 
 @dataclass
+class PipelineRetryConfig:
+    """Configuration for pipeline failure retry logic."""
+
+    enabled: bool = True
+    max_retries: int = 3
+    initial_delay_seconds: int = 30
+    max_delay_seconds: int = 300
+    backoff_multiplier: float = 2.0
+    retry_timeout_hours: int = 24
+
+
+@dataclass
+class EscalationConfig:
+    """Configuration for failure escalation process."""
+
+    enabled: bool = True
+    escalation_threshold: int = 5  # Number of persistent failures before escalation
+    escalation_contacts: List[str] = field(default_factory=list)
+    escalation_channels: List[str] = field(default_factory=lambda: ["github_issue"])
+    cooldown_hours: int = 6  # Hours to wait before re-escalating same issue
+
+
+@dataclass
 class Config:
     """Main configuration class for the AI Story Management System."""
 
@@ -67,6 +90,14 @@ class Config:
     # Webhook Configuration
     webhook_config: WebhookConfig = field(default_factory=WebhookConfig)
     webhook_secret: Optional[str] = None
+
+    # Pipeline Retry Configuration
+    pipeline_retry_config: PipelineRetryConfig = field(
+        default_factory=PipelineRetryConfig
+    )
+
+    # Escalation Configuration
+    escalation_config: EscalationConfig = field(default_factory=EscalationConfig)
 
     # Multi-Repository Configuration
     repositories: Dict[str, RepositoryConfig] = field(default_factory=dict)
@@ -145,6 +176,29 @@ def load_config() -> Config:
                 enabled=webhook_data.get("enabled", True),
                 secret=webhook_data.get("secret"),
                 status_mappings=webhook_data.get("status_mappings", {}),
+            )
+
+            # Parse pipeline retry config
+            retry_data = config_data.get("pipeline_retry_config", {})
+            config.pipeline_retry_config = PipelineRetryConfig(
+                enabled=retry_data.get("enabled", True),
+                max_retries=retry_data.get("max_retries", 3),
+                initial_delay_seconds=retry_data.get("initial_delay_seconds", 30),
+                max_delay_seconds=retry_data.get("max_delay_seconds", 300),
+                backoff_multiplier=retry_data.get("backoff_multiplier", 2.0),
+                retry_timeout_hours=retry_data.get("retry_timeout_hours", 24),
+            )
+
+            # Parse escalation config
+            escalation_data = config_data.get("escalation_config", {})
+            config.escalation_config = EscalationConfig(
+                enabled=escalation_data.get("enabled", True),
+                escalation_threshold=escalation_data.get("escalation_threshold", 5),
+                escalation_contacts=escalation_data.get("escalation_contacts", []),
+                escalation_channels=escalation_data.get(
+                    "escalation_channels", ["github_issue"]
+                ),
+                cooldown_hours=escalation_data.get("cooldown_hours", 6),
             )
 
         except (json.JSONDecodeError, KeyError) as e:

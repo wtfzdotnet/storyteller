@@ -311,6 +311,45 @@ class DatabaseManager:
         """
         )
 
+        # Retry attempts table for tracking retry operations
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS retry_attempts (
+                id TEXT PRIMARY KEY,
+                failure_id TEXT NOT NULL,
+                repository TEXT NOT NULL,
+                attempt_number INTEGER NOT NULL,
+                attempted_at TEXT NOT NULL,
+                completed_at TEXT,
+                success BOOLEAN DEFAULT FALSE,
+                error_message TEXT,
+                retry_delay_seconds INTEGER DEFAULT 0,
+                metadata TEXT DEFAULT '{}',
+
+                FOREIGN KEY (failure_id) REFERENCES pipeline_failures (id) ON DELETE CASCADE
+            )
+        """
+        )
+
+        # Escalation records table for tracking failure escalations
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS escalation_records (
+                id TEXT PRIMARY KEY,
+                repository TEXT NOT NULL,
+                failure_pattern TEXT NOT NULL,
+                failure_count INTEGER DEFAULT 0,
+                escalated_at TEXT NOT NULL,
+                escalation_level TEXT NOT NULL CHECK (escalation_level IN ('agent', 'human', 'critical')),
+                contacts_notified TEXT DEFAULT '[]',
+                channels_used TEXT DEFAULT '[]',
+                resolved BOOLEAN DEFAULT FALSE,
+                resolved_at TEXT,
+                metadata TEXT DEFAULT '{}'
+            )
+        """
+        )
+
         # Create indexes for pipeline monitoring
         conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_pipeline_runs_repository ON pipeline_runs (repository)"
@@ -329,6 +368,26 @@ class DatabaseManager:
         )
         conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_pipeline_failures_detected_at ON pipeline_failures (detected_at)"
+        )
+
+        # Create indexes for retry attempts and escalation records
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_retry_attempts_failure_id ON retry_attempts (failure_id)"
+        )
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_retry_attempts_repository ON retry_attempts (repository)"
+        )
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_retry_attempts_attempted_at ON retry_attempts (attempted_at)"
+        )
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_escalation_records_repository ON escalation_records (repository)"
+        )
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_escalation_records_escalated_at ON escalation_records (escalated_at)"
+        )
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_escalation_records_resolved ON escalation_records (resolved)"
         )
 
     def save_story(self, story: Union[Epic, UserStory, SubStory]) -> str:
@@ -1466,6 +1525,145 @@ class DatabaseManager:
 
             return runs
 
+    def store_retry_attempt(self, retry_attempt) -> bool:
+        """Store a retry attempt in the database."""
+        with self.get_connection() as conn:
+            try:
+                data = retry_attempt.to_dict()
+                columns = ", ".join(data.keys())
+                placeholders = ", ".join(["?" for _ in data])
+
+                conn.execute(
+                    f"INSERT OR REPLACE INTO retry_attempts ({columns}) VALUES ({placeholders})",
+                    list(data.values()),
+                )
+                return True
+            except Exception as e:
+                logger.error(f"Failed to store retry attempt: {e}")
+                return False
+
+    def get_retry_attempts(self, failure_id: str) -> List:
+        """Get retry attempts for a specific failure."""
+        from models import RetryAttempt
+
+        with self.get_connection() as conn:
+            cursor = conn.execute(
+                "SELECT * FROM retry_attempts WHERE failure_id = ? ORDER BY attempt_number",
+                (failure_id,),
+            )
+            attempts = []
+
+            for row in cursor.fetchall():
+                row_dict = dict(row)
+                attempt = RetryAttempt.from_dict(row_dict)
+                attempts.append(attempt)
+
+            return attempts
+
+    def get_recent_retry_attempts(
+        self, repository: Optional[str] = None, days: int = 7
+    ) -> List:
+        """Get recent retry attempts from the database."""
+        from models import RetryAttempt
+
+        with self.get_connection() as conn:
+            query = """
+                SELECT * FROM retry_attempts 
+                WHERE attempted_at >= datetime('now', '-{} days')
+            """.format(
+                days
+            )
+            params = []
+
+            if repository:
+                query += " AND repository = ?"
+                params.append(repository)
+
+            query += " ORDER BY attempted_at DESC"
+
+            cursor = conn.execute(query, params)
+            attempts = []
+
+            for row in cursor.fetchall():
+                row_dict = dict(row)
+                attempt = RetryAttempt.from_dict(row_dict)
+                attempts.append(attempt)
+
+            return attempts
+
+    def store_escalation_record(self, escalation_record) -> bool:
+        """Store an escalation record in the database."""
+        with self.get_connection() as conn:
+            try:
+                data = escalation_record.to_dict()
+                columns = ", ".join(data.keys())
+                placeholders = ", ".join(["?" for _ in data])
+
+                conn.execute(
+                    f"INSERT OR REPLACE INTO escalation_records ({columns}) VALUES ({placeholders})",
+                    list(data.values()),
+                )
+                return True
+            except Exception as e:
+                logger.error(f"Failed to store escalation record: {e}")
+                return False
+
+    def get_recent_escalations(
+        self,
+        repository: Optional[str] = None,
+        days: int = 30,
+        resolved: Optional[bool] = None,
+    ) -> List:
+        """Get recent escalation records from the database."""
+        from models import EscalationRecord
+
+        with self.get_connection() as conn:
+            query = """
+                SELECT * FROM escalation_records 
+                WHERE escalated_at >= datetime('now', '-{} days')
+            """.format(
+                days
+            )
+            params = []
+
+            if repository:
+                query += " AND repository = ?"
+                params.append(repository)
+
+            if resolved is not None:
+                query += " AND resolved = ?"
+                params.append(resolved)
+
+            query += " ORDER BY escalated_at DESC"
+
+            cursor = conn.execute(query, params)
+            escalations = []
+
+            for row in cursor.fetchall():
+                row_dict = dict(row)
+                escalation = EscalationRecord.from_dict(row_dict)
+                escalations.append(escalation)
+
+            return escalations
+
+    def count_recent_failures_by_pattern(
+        self, repository: str, failure_pattern: str, hours: int = 24
+    ) -> int:
+        """Count recent failures matching a pattern."""
+        with self.get_connection() as conn:
+            cursor = conn.execute(
+                """
+                SELECT COUNT(*) FROM pipeline_failures 
+                WHERE repository = ? 
+                AND failure_message LIKE ? 
+                AND detected_at >= datetime('now', '-{} hours')
+                """.format(
+                    hours
+                ),
+                (repository, f"%{failure_pattern}%"),
+            )
+            return cursor.fetchone()[0]
+
 
 def run_migrations(db_path: str = "storyteller.db"):
     """Run database migrations to set up the schema."""
@@ -1489,6 +1687,8 @@ def run_migrations(db_path: str = "storyteller.db"):
             "pipeline_runs",
             "pipeline_failures",
             "failure_patterns",
+            "retry_attempts",
+            "escalation_records",
         ]
         missing_tables = [t for t in expected_tables if t not in tables]
 

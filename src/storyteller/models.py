@@ -789,3 +789,116 @@ class FailurePattern:
             "resolution_suggestions": json.dumps(self.resolution_suggestions),
             "metadata": json.dumps(self.metadata),
         }
+
+
+@dataclass
+class RetryAttempt:
+    """Represents a retry attempt for a failed operation."""
+
+    id: str = field(default_factory=lambda: f"retry_{uuid.uuid4().hex[:8]}")
+    failure_id: str = ""  # References PipelineFailure.id
+    repository: str = ""
+    attempt_number: int = 1
+    attempted_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    completed_at: Optional[datetime] = None
+    success: bool = False
+    error_message: Optional[str] = None
+    retry_delay_seconds: int = 0
+    metadata: Dict[str, Any] = field(default_factory=dict)
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to dictionary for storage."""
+        return {
+            "id": self.id,
+            "failure_id": self.failure_id,
+            "repository": self.repository,
+            "attempt_number": self.attempt_number,
+            "attempted_at": self.attempted_at.isoformat(),
+            "completed_at": (
+                self.completed_at.isoformat() if self.completed_at else None
+            ),
+            "success": self.success,
+            "error_message": self.error_message,
+            "retry_delay_seconds": self.retry_delay_seconds,
+            "metadata": json.dumps(self.metadata),
+        }
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "RetryAttempt":
+        """Create from dictionary."""
+        return cls(
+            id=data["id"],
+            failure_id=data["failure_id"],
+            repository=data["repository"],
+            attempt_number=data["attempt_number"],
+            attempted_at=datetime.fromisoformat(data["attempted_at"]),
+            completed_at=(
+                datetime.fromisoformat(data["completed_at"])
+                if data["completed_at"]
+                else None
+            ),
+            success=data["success"],
+            error_message=data["error_message"],
+            retry_delay_seconds=data["retry_delay_seconds"],
+            metadata=json.loads(data["metadata"]) if data["metadata"] else {},
+        )
+
+
+@dataclass
+class EscalationRecord:
+    """Represents an escalation event for persistent failures."""
+
+    id: str = field(default_factory=lambda: f"escalation_{uuid.uuid4().hex[:8]}")
+    repository: str = ""
+    failure_pattern: str = ""  # Description of failure pattern
+    failure_count: int = 0
+    escalated_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    escalation_level: str = "agent"  # agent, human, critical
+    contacts_notified: List[str] = field(default_factory=list)
+    channels_used: List[str] = field(default_factory=list)
+    resolved: bool = False
+    resolved_at: Optional[datetime] = None
+    metadata: Dict[str, Any] = field(default_factory=dict)
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to dictionary for storage."""
+        return {
+            "id": self.id,
+            "repository": self.repository,
+            "failure_pattern": self.failure_pattern,
+            "failure_count": self.failure_count,
+            "escalated_at": self.escalated_at.isoformat(),
+            "escalation_level": self.escalation_level,
+            "contacts_notified": json.dumps(self.contacts_notified),
+            "channels_used": json.dumps(self.channels_used),
+            "resolved": self.resolved,
+            "resolved_at": self.resolved_at.isoformat() if self.resolved_at else None,
+            "metadata": json.dumps(self.metadata),
+        }
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "EscalationRecord":
+        """Create from dictionary."""
+        return cls(
+            id=data["id"],
+            repository=data["repository"],
+            failure_pattern=data["failure_pattern"],
+            failure_count=data["failure_count"],
+            escalated_at=datetime.fromisoformat(data["escalated_at"]),
+            escalation_level=data["escalation_level"],
+            contacts_notified=(
+                json.loads(data["contacts_notified"])
+                if data["contacts_notified"]
+                else []
+            ),
+            channels_used=(
+                json.loads(data["channels_used"]) if data["channels_used"] else []
+            ),
+            resolved=data["resolved"],
+            resolved_at=(
+                datetime.fromisoformat(data["resolved_at"])
+                if data["resolved_at"]
+                else None
+            ),
+            metadata=json.loads(data["metadata"]) if data["metadata"] else {},
+        )

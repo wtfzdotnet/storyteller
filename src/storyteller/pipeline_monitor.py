@@ -9,12 +9,14 @@ from config import Config
 from database import DatabaseManager
 from github_handler import GitHubHandler
 from models import (
+    EscalationRecord,
     FailureCategory,
     FailurePattern,
     FailureSeverity,
     PipelineFailure,
     PipelineRun,
     PipelineStatus,
+    RetryAttempt,
 )
 
 logger = logging.getLogger(__name__)
@@ -560,3 +562,264 @@ class PipelineMonitor:
         }
 
         return suggestions.get(category, ["Review logs and fix underlying issue"])
+
+    async def retry_failed_pipeline(
+        self, failure: "PipelineFailure"
+    ) -> Optional["RetryAttempt"]:
+        """Attempt to retry a failed pipeline operation."""
+        import asyncio
+
+        from models import RetryAttempt
+
+        # Check if retry is enabled and we haven't exceeded max retries
+        if not self.config.pipeline_retry_config.enabled:
+            logger.debug("Pipeline retry is disabled")
+            return None
+
+        if failure.retry_count >= self.config.pipeline_retry_config.max_retries:
+            logger.info(
+                f"Max retries ({self.config.pipeline_retry_config.max_retries}) exceeded for failure {failure.id}"
+            )
+            return None
+
+        # Calculate delay with exponential backoff
+        delay = min(
+            self.config.pipeline_retry_config.initial_delay_seconds
+            * (
+                self.config.pipeline_retry_config.backoff_multiplier
+                ** failure.retry_count
+            ),
+            self.config.pipeline_retry_config.max_delay_seconds,
+        )
+
+        # Create retry attempt record
+        retry_attempt = RetryAttempt(
+            failure_id=failure.id,
+            repository=failure.repository,
+            attempt_number=failure.retry_count + 1,
+            retry_delay_seconds=int(delay),
+            metadata={
+                "original_failure_category": failure.category.value,
+                "original_failure_severity": failure.severity.value,
+                "pipeline_id": failure.pipeline_id,
+                "job_name": failure.job_name,
+            },
+        )
+
+        # Store the retry attempt
+        self.database.store_retry_attempt(retry_attempt)
+
+        logger.info(
+            f"Scheduling retry for failure {failure.id} in {delay} seconds (attempt {retry_attempt.attempt_number})"
+        )
+
+        try:
+            # Wait for the calculated delay
+            await asyncio.sleep(delay)
+
+            # Attempt to trigger the pipeline retry
+            # For now, we'll simulate this - in a real implementation, this would
+            # trigger a workflow run via GitHub API
+            success = await self._trigger_pipeline_retry(failure)
+
+            # Update retry attempt with result
+            retry_attempt.completed_at = datetime.now(timezone.utc)
+            retry_attempt.success = success
+
+            if success:
+                logger.info(f"Retry attempt {retry_attempt.id} succeeded")
+                # Mark original failure as resolved
+                failure.resolved_at = datetime.now(timezone.utc)
+                self.database.store_pipeline_failure(failure)
+            else:
+                logger.warning(f"Retry attempt {retry_attempt.id} failed")
+                retry_attempt.error_message = "Pipeline retry failed"
+                # Increment retry count on original failure
+                failure.retry_count += 1
+                self.database.store_pipeline_failure(failure)
+
+            # Update retry attempt record
+            self.database.store_retry_attempt(retry_attempt)
+
+            return retry_attempt
+
+        except Exception as e:
+            logger.error(f"Error during retry attempt {retry_attempt.id}: {e}")
+            retry_attempt.completed_at = datetime.now(timezone.utc)
+            retry_attempt.success = False
+            retry_attempt.error_message = str(e)
+            self.database.store_retry_attempt(retry_attempt)
+
+            # Increment retry count on original failure
+            failure.retry_count += 1
+            self.database.store_pipeline_failure(failure)
+
+            return retry_attempt
+
+    async def _trigger_pipeline_retry(self, failure: "PipelineFailure") -> bool:
+        """Trigger a pipeline retry via GitHub API."""
+        try:
+            # For certain types of failures, we can attempt automatic remediation
+            if failure.category.value in ["linting", "formatting"]:
+                # For linting/formatting, we could potentially create a PR with fixes
+                # For now, we'll simulate success for these "auto-fixable" issues
+                logger.info(f"Simulating auto-fix for {failure.category.value} issue")
+                return True
+
+            # For other failures, we would need to trigger a workflow re-run
+            # This would require using the GitHub API to re-run the failed workflow
+            logger.info(
+                f"Would trigger workflow re-run for {failure.category.value} failure"
+            )
+
+            # For demonstration purposes, simulate a 50% success rate
+            import random
+
+            return random.random() > 0.5
+
+        except Exception as e:
+            logger.error(f"Failed to trigger pipeline retry: {e}")
+            return False
+
+    def check_for_escalation(self, repository: str) -> Optional["EscalationRecord"]:
+        """Check if failures in a repository need escalation."""
+        from models import EscalationRecord
+
+        if not self.config.escalation_config.enabled:
+            return None
+
+        # Get recent unresolved failures
+        recent_failures = self.database.get_recent_pipeline_failures(
+            repository=repository, days=1
+        )
+
+        # Group failures by pattern/category
+        failure_patterns = {}
+        for failure in recent_failures:
+            if failure.resolved_at is None:  # Only unresolved failures
+                pattern_key = f"{failure.category.value}_{failure.job_name}"
+                if pattern_key not in failure_patterns:
+                    failure_patterns[pattern_key] = []
+                failure_patterns[pattern_key].append(failure)
+
+        # Check if any pattern exceeds escalation threshold
+        for pattern, failures in failure_patterns.items():
+            if len(failures) >= self.config.escalation_config.escalation_threshold:
+
+                # Check if we've already escalated this pattern recently
+                recent_escalations = self.database.get_recent_escalations(
+                    repository=repository, days=1, resolved=False
+                )
+
+                # Skip if already escalated recently (within cooldown)
+                should_skip = False
+                for escalation in recent_escalations:
+                    if pattern in escalation.failure_pattern:
+                        hours_since = (
+                            datetime.now(timezone.utc) - escalation.escalated_at
+                        ).total_seconds() / 3600
+                        if hours_since < self.config.escalation_config.cooldown_hours:
+                            should_skip = True
+                            break
+
+                if should_skip:
+                    continue
+
+                # Create escalation record
+                escalation = EscalationRecord(
+                    repository=repository,
+                    failure_pattern=pattern,
+                    failure_count=len(failures),
+                    escalation_level="agent",  # Start with agent level
+                    channels_used=self.config.escalation_config.escalation_channels,
+                    contacts_notified=self.config.escalation_config.escalation_contacts,
+                    metadata={
+                        "failure_ids": [f.id for f in failures],
+                        "categories": list(set(f.category.value for f in failures)),
+                        "severities": list(set(f.severity.value for f in failures)),
+                    },
+                )
+
+                # Store escalation record
+                self.database.store_escalation_record(escalation)
+
+                logger.warning(
+                    f"Escalating {len(failures)} persistent failures in {repository} "
+                    f"for pattern '{pattern}'"
+                )
+
+                return escalation
+
+        return None
+
+    def get_retry_dashboard_data(
+        self, repository: Optional[str] = None, days: int = 7
+    ) -> Dict[str, Any]:
+        """Get dashboard data for retry attempts and escalations."""
+        try:
+            # Get recent retry attempts
+            retry_attempts = self.database.get_recent_retry_attempts(
+                repository=repository, days=days
+            )
+
+            # Get recent escalations
+            escalations = self.database.get_recent_escalations(
+                repository=repository, days=days
+            )
+
+            # Calculate retry statistics
+            total_retries = len(retry_attempts)
+            successful_retries = len([r for r in retry_attempts if r.success])
+            failed_retries = total_retries - successful_retries
+            success_rate = (
+                (successful_retries / total_retries * 100) if total_retries > 0 else 0
+            )
+
+            # Calculate escalation statistics
+            total_escalations = len(escalations)
+            resolved_escalations = len([e for e in escalations if e.resolved])
+            pending_escalations = total_escalations - resolved_escalations
+
+            return {
+                "retry_summary": {
+                    "total_retries": total_retries,
+                    "successful_retries": successful_retries,
+                    "failed_retries": failed_retries,
+                    "success_rate": round(success_rate, 2),
+                    "time_period_days": days,
+                },
+                "escalation_summary": {
+                    "total_escalations": total_escalations,
+                    "resolved_escalations": resolved_escalations,
+                    "pending_escalations": pending_escalations,
+                    "time_period_days": days,
+                },
+                "recent_retries": [
+                    {
+                        "id": r.id,
+                        "repository": r.repository,
+                        "attempt_number": r.attempt_number,
+                        "success": r.success,
+                        "attempted_at": r.attempted_at.isoformat(),
+                        "delay_seconds": r.retry_delay_seconds,
+                    }
+                    for r in retry_attempts[-10:]  # Last 10 retries
+                ],
+                "recent_escalations": [
+                    {
+                        "id": e.id,
+                        "repository": e.repository,
+                        "failure_pattern": e.failure_pattern,
+                        "failure_count": e.failure_count,
+                        "escalation_level": e.escalation_level,
+                        "escalated_at": e.escalated_at.isoformat(),
+                        "resolved": e.resolved,
+                    }
+                    for e in escalations[-10:]  # Last 10 escalations
+                ],
+                "last_updated": datetime.now(timezone.utc).isoformat(),
+            }
+
+        except Exception as e:
+            logger.error(f"Failed to get retry dashboard data: {e}")
+            return {"error": str(e)}

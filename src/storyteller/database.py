@@ -13,14 +13,8 @@ try:
         Conversation,
         ConversationParticipant,
         Epic,
-        FailureCategory,
-        FailurePattern,
-        FailureSeverity,
         Message,
-        PipelineFailure,
-        PipelineRun,
         RecoveryState,
-        RecoveryStatus,
         StoryHierarchy,
         StoryStatus,
         StoryType,
@@ -34,14 +28,8 @@ except ImportError:
         Conversation,
         ConversationParticipant,
         Epic,
-        FailureCategory,
-        FailurePattern,
-        FailureSeverity,
         Message,
-        PipelineFailure,
-        PipelineRun,
         RecoveryState,
-        RecoveryStatus,
         StoryHierarchy,
         StoryStatus,
         StoryType,
@@ -1784,7 +1772,10 @@ class DatabaseManager:
                 return False
 
     def get_workflow_checkpoints(
-        self, repository: Optional[str] = None, run_id: Optional[str] = None, limit: int = 100
+        self,
+        repository: Optional[str] = None,
+        run_id: Optional[str] = None,
+        limit: int = 100,
     ) -> List:
         """Get workflow checkpoints from the database."""
         with self.get_connection() as conn:
@@ -1856,7 +1847,10 @@ class DatabaseManager:
                 return False
 
     def get_recovery_states(
-        self, repository: Optional[str] = None, status: Optional[str] = None, limit: int = 100
+        self,
+        repository: Optional[str] = None,
+        status: Optional[str] = None,
+        limit: int = 100,
     ) -> List:
         """Get recovery states from the database."""
         with self.get_connection() as conn:
@@ -1907,7 +1901,9 @@ class DatabaseManager:
                 DELETE FROM workflow_checkpoints 
                 WHERE repository = ? 
                 AND created_at < datetime('now', '-{} days')
-                """.format(keep_days),
+                """.format(
+                    keep_days
+                ),
                 (repository,),
             )
             return cursor.rowcount

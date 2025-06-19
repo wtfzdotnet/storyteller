@@ -952,9 +952,17 @@ class WorkflowCheckpoint:
             checkpoint_type=data["checkpoint_type"],
             checkpoint_name=data["checkpoint_name"],
             created_at=datetime.fromisoformat(data["created_at"]),
-            workflow_state=json.loads(data["workflow_state"]) if data["workflow_state"] else {},
-            environment_context=json.loads(data["environment_context"]) if data["environment_context"] else {},
-            dependencies=json.loads(data["dependencies"]) if data["dependencies"] else [],
+            workflow_state=(
+                json.loads(data["workflow_state"]) if data["workflow_state"] else {}
+            ),
+            environment_context=(
+                json.loads(data["environment_context"])
+                if data["environment_context"]
+                else {}
+            ),
+            dependencies=(
+                json.loads(data["dependencies"]) if data["dependencies"] else []
+            ),
             artifacts=json.loads(data["artifacts"]) if data["artifacts"] else [],
             metadata=json.loads(data["metadata"]) if data["metadata"] else {},
         )
@@ -962,7 +970,7 @@ class WorkflowCheckpoint:
 
 class RecoveryStatus(Enum):
     """Recovery operation status."""
-    
+
     PENDING = "pending"
     IN_PROGRESS = "in_progress"
     COMPLETED = "completed"
@@ -1001,7 +1009,9 @@ class RecoveryState:
             "target_checkpoint_id": self.target_checkpoint_id,
             "recovery_plan": json.dumps(self.recovery_plan),
             "started_at": self.started_at.isoformat(),
-            "completed_at": self.completed_at.isoformat() if self.completed_at else None,
+            "completed_at": (
+                self.completed_at.isoformat() if self.completed_at else None
+            ),
             "progress_steps": json.dumps(self.progress_steps),
             "recovery_context": json.dumps(self.recovery_context),
             "rollback_checkpoint_id": self.rollback_checkpoint_id,
@@ -1020,13 +1030,27 @@ class RecoveryState:
             recovery_type=data["recovery_type"],
             status=RecoveryStatus(data["status"]),
             target_checkpoint_id=data.get("target_checkpoint_id"),
-            recovery_plan=json.loads(data["recovery_plan"]) if data["recovery_plan"] else [],
+            recovery_plan=(
+                json.loads(data["recovery_plan"]) if data["recovery_plan"] else []
+            ),
             started_at=datetime.fromisoformat(data["started_at"]),
-            completed_at=datetime.fromisoformat(data["completed_at"]) if data["completed_at"] else None,
-            progress_steps=json.loads(data["progress_steps"]) if data["progress_steps"] else [],
-            recovery_context=json.loads(data["recovery_context"]) if data["recovery_context"] else {},
+            completed_at=(
+                datetime.fromisoformat(data["completed_at"])
+                if data["completed_at"]
+                else None
+            ),
+            progress_steps=(
+                json.loads(data["progress_steps"]) if data["progress_steps"] else []
+            ),
+            recovery_context=(
+                json.loads(data["recovery_context"]) if data["recovery_context"] else {}
+            ),
             rollback_checkpoint_id=data.get("rollback_checkpoint_id"),
             corruption_detected=data.get("corruption_detected", False),
-            validation_results=json.loads(data["validation_results"]) if data["validation_results"] else {},
+            validation_results=(
+                json.loads(data["validation_results"])
+                if data["validation_results"]
+                else {}
+            ),
             metadata=json.loads(data["metadata"]) if data["metadata"] else {},
         )

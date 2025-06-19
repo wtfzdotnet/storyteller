@@ -700,7 +700,9 @@ class WorkflowProcessor:
                 )
 
             # Get the failure
-            failures = self.pipeline_monitor.database.get_recent_pipeline_failures(days=30)
+            failures = self.pipeline_monitor.database.get_recent_pipeline_failures(
+                days=30
+            )
             failure = None
             for f in failures:
                 if f.id == failure_id:
@@ -805,8 +807,10 @@ class WorkflowProcessor:
                     error="Recovery functionality not enabled",
                 )
 
-            dashboard_data = self.pipeline_monitor.recovery_manager.get_recovery_dashboard_data(
-                repository=repository
+            dashboard_data = (
+                self.pipeline_monitor.recovery_manager.get_recovery_dashboard_data(
+                    repository=repository
+                )
             )
 
             if "error" in dashboard_data:
@@ -860,8 +864,10 @@ class WorkflowProcessor:
                 )
 
             # Execute rollback
-            success = await self.pipeline_monitor.recovery_manager.rollback_to_checkpoint(
-                checkpoint, reason
+            success = (
+                await self.pipeline_monitor.recovery_manager.rollback_to_checkpoint(
+                    checkpoint, reason
+                )
             )
 
             if success:

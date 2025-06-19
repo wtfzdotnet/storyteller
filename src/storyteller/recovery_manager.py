@@ -131,7 +131,9 @@ class RecoveryManager:
             recovery_state.status = RecoveryStatus.IN_PROGRESS
             self.database.store_recovery_state(recovery_state)
 
-            logger.info(f"Executing recovery {recovery_state.id} ({recovery_state.recovery_type})")
+            logger.info(
+                f"Executing recovery {recovery_state.id} ({recovery_state.recovery_type})"
+            )
 
             success = False
             if recovery_state.recovery_type == "retry":
@@ -141,10 +143,14 @@ class RecoveryManager:
             elif recovery_state.recovery_type == "rollback":
                 success = await self._execute_rollback_recovery(recovery_state)
             else:
-                raise ValueError(f"Unknown recovery type: {recovery_state.recovery_type}")
+                raise ValueError(
+                    f"Unknown recovery type: {recovery_state.recovery_type}"
+                )
 
             # Update recovery state
-            recovery_state.status = RecoveryStatus.COMPLETED if success else RecoveryStatus.FAILED
+            recovery_state.status = (
+                RecoveryStatus.COMPLETED if success else RecoveryStatus.FAILED
+            )
             recovery_state.completed_at = datetime.now(timezone.utc)
             self.database.store_recovery_state(recovery_state)
 
@@ -183,7 +189,9 @@ class RecoveryManager:
 
             # Check dependencies if requested
             if validate_dependencies and checkpoint.dependencies:
-                dependency_issues = await self._validate_dependencies(checkpoint.dependencies)
+                dependency_issues = await self._validate_dependencies(
+                    checkpoint.dependencies
+                )
                 if dependency_issues:
                     validation_results["errors"].extend(dependency_issues)
                     validation_results["is_valid"] = False
@@ -215,7 +223,9 @@ class RecoveryManager:
             # Validate checkpoint before rollback
             validation = await self.validate_state(checkpoint)
             if not validation["is_valid"]:
-                logger.error(f"Cannot rollback to invalid checkpoint: {validation['errors']}")
+                logger.error(
+                    f"Cannot rollback to invalid checkpoint: {validation['errors']}"
+                )
                 return False
 
             # Execute rollback operations
@@ -277,7 +287,9 @@ class RecoveryManager:
 
         return plan
 
-    async def _find_resumption_point(self, failure: PipelineFailure) -> Optional[WorkflowCheckpoint]:
+    async def _find_resumption_point(
+        self, failure: PipelineFailure
+    ) -> Optional[WorkflowCheckpoint]:
         """Find the best checkpoint to resume from."""
         checkpoints = self.database.get_workflow_checkpoints(
             repository=failure.repository, limit=10
@@ -285,9 +297,9 @@ class RecoveryManager:
 
         # Find checkpoints related to the failed workflow
         relevant_checkpoints = [
-            cp for cp in checkpoints
-            if cp.run_id == failure.pipeline_id or 
-               cp.commit_sha == failure.commit_sha
+            cp
+            for cp in checkpoints
+            if cp.run_id == failure.pipeline_id or cp.commit_sha == failure.commit_sha
         ]
 
         if not relevant_checkpoints:
@@ -298,13 +310,18 @@ class RecoveryManager:
         best_checkpoint = None
         for checkpoint in relevant_checkpoints:
             if checkpoint.created_at < failure.detected_at:
-                if not best_checkpoint or checkpoint.created_at > best_checkpoint.created_at:
+                if (
+                    not best_checkpoint
+                    or checkpoint.created_at > best_checkpoint.created_at
+                ):
                     best_checkpoint = checkpoint
 
         if best_checkpoint:
             logger.info(f"Found resumption point: checkpoint {best_checkpoint.id}")
         else:
-            logger.warning(f"No suitable resumption point found for failure {failure.id}")
+            logger.warning(
+                f"No suitable resumption point found for failure {failure.id}"
+            )
 
         return best_checkpoint
 
@@ -313,31 +330,38 @@ class RecoveryManager:
         logger.info(f"Executing retry recovery for {recovery_state.id}")
 
         # Add progress step
-        recovery_state.progress_steps.append({
-            "step": "retry_initiation",
-            "status": "in_progress",
-            "timestamp": datetime.now(timezone.utc).isoformat(),
-        })
+        recovery_state.progress_steps.append(
+            {
+                "step": "retry_initiation",
+                "status": "in_progress",
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+            }
+        )
 
         # Simulate retry logic (in real implementation, would trigger GitHub workflow)
         # For now, return success based on failure type
-        failure_type = recovery_state.recovery_context.get("original_failure", {}).get("category")
-        
+        failure_type = recovery_state.recovery_context.get("original_failure", {}).get(
+            "category"
+        )
+
         # Linting and formatting failures have higher success rate
         if failure_type in ["linting", "formatting"]:
             success = True
         else:
             # Simulate 70% success rate for other types
             import random
+
             success = random.random() < 0.7
 
         # Update progress
-        recovery_state.progress_steps.append({
-            "step": "retry_execution",
-            "status": "completed" if success else "failed",
-            "timestamp": datetime.now(timezone.utc).isoformat(),
-            "result": "success" if success else "failure",
-        })
+        recovery_state.progress_steps.append(
+            {
+                "step": "retry_execution",
+                "status": "completed" if success else "failed",
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "result": "success" if success else "failure",
+            }
+        )
 
         return success
 
@@ -358,37 +382,45 @@ class RecoveryManager:
                 break
 
         if not target_checkpoint:
-            logger.error(f"Target checkpoint {recovery_state.target_checkpoint_id} not found")
+            logger.error(
+                f"Target checkpoint {recovery_state.target_checkpoint_id} not found"
+            )
             return False
 
         # Validate checkpoint state
         validation = await self.validate_state(target_checkpoint)
         if not validation["is_valid"]:
-            logger.error(f"Cannot resume from invalid checkpoint: {validation['errors']}")
+            logger.error(
+                f"Cannot resume from invalid checkpoint: {validation['errors']}"
+            )
             return False
 
         # Add progress steps
-        recovery_state.progress_steps.extend([
-            {
-                "step": "checkpoint_validation",
-                "status": "completed",
-                "timestamp": datetime.now(timezone.utc).isoformat(),
-            },
-            {
-                "step": "environment_restoration",
-                "status": "in_progress",
-                "timestamp": datetime.now(timezone.utc).isoformat(),
-            },
-        ])
+        recovery_state.progress_steps.extend(
+            [
+                {
+                    "step": "checkpoint_validation",
+                    "status": "completed",
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                },
+                {
+                    "step": "environment_restoration",
+                    "status": "in_progress",
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                },
+            ]
+        )
 
         # Simulate resumption success (in real implementation, would restore state and continue)
         success = True
 
-        recovery_state.progress_steps.append({
-            "step": "workflow_resumption",
-            "status": "completed" if success else "failed",
-            "timestamp": datetime.now(timezone.utc).isoformat(),
-        })
+        recovery_state.progress_steps.append(
+            {
+                "step": "workflow_resumption",
+                "status": "completed" if success else "failed",
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+            }
+        )
 
         return success
 
@@ -409,7 +441,9 @@ class RecoveryManager:
                 break
 
         if not rollback_checkpoint:
-            logger.error(f"Rollback checkpoint {recovery_state.rollback_checkpoint_id} not found")
+            logger.error(
+                f"Rollback checkpoint {recovery_state.rollback_checkpoint_id} not found"
+            )
             return False
 
         # Execute rollback
@@ -417,15 +451,19 @@ class RecoveryManager:
             rollback_checkpoint, reason="recovery_rollback"
         )
 
-        recovery_state.progress_steps.append({
-            "step": "rollback_execution",
-            "status": "completed" if rollback_success else "failed",
-            "timestamp": datetime.now(timezone.utc).isoformat(),
-        })
+        recovery_state.progress_steps.append(
+            {
+                "step": "rollback_execution",
+                "status": "completed" if rollback_success else "failed",
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+            }
+        )
 
         return rollback_success
 
-    async def _execute_rollback_operations(self, checkpoint: WorkflowCheckpoint) -> bool:
+    async def _execute_rollback_operations(
+        self, checkpoint: WorkflowCheckpoint
+    ) -> bool:
         """Execute the actual rollback operations."""
         try:
             # In a real implementation, this would:
@@ -433,9 +471,11 @@ class RecoveryManager:
             # 2. Restore environment variables
             # 3. Restore artifacts and dependencies
             # 4. Reset workflow state
-            
-            logger.info(f"Simulating rollback operations for checkpoint {checkpoint.id}")
-            
+
+            logger.info(
+                f"Simulating rollback operations for checkpoint {checkpoint.id}"
+            )
+
             # Simulate rollback success
             return True
 
@@ -461,7 +501,9 @@ class RecoveryManager:
             # For now, assume all artifacts are valid
         return issues
 
-    def get_recovery_dashboard_data(self, repository: Optional[str] = None) -> Dict[str, Any]:
+    def get_recovery_dashboard_data(
+        self, repository: Optional[str] = None
+    ) -> Dict[str, Any]:
         """Get dashboard data for recovery operations."""
         try:
             # Get recent recovery states
@@ -471,11 +513,21 @@ class RecoveryManager:
 
             # Calculate statistics
             total_recoveries = len(recovery_states)
-            successful_recoveries = len([r for r in recovery_states if r.status == RecoveryStatus.COMPLETED])
-            failed_recoveries = len([r for r in recovery_states if r.status == RecoveryStatus.FAILED])
-            in_progress_recoveries = len([r for r in recovery_states if r.status == RecoveryStatus.IN_PROGRESS])
+            successful_recoveries = len(
+                [r for r in recovery_states if r.status == RecoveryStatus.COMPLETED]
+            )
+            failed_recoveries = len(
+                [r for r in recovery_states if r.status == RecoveryStatus.FAILED]
+            )
+            in_progress_recoveries = len(
+                [r for r in recovery_states if r.status == RecoveryStatus.IN_PROGRESS]
+            )
 
-            success_rate = (successful_recoveries / total_recoveries * 100) if total_recoveries > 0 else 0
+            success_rate = (
+                (successful_recoveries / total_recoveries * 100)
+                if total_recoveries > 0
+                else 0
+            )
 
             # Group by recovery type
             recovery_by_type = {}
@@ -508,7 +560,9 @@ class RecoveryManager:
                         "status": r.status.value,
                         "repository": r.repository,
                         "started_at": r.started_at.isoformat(),
-                        "completed_at": r.completed_at.isoformat() if r.completed_at else None,
+                        "completed_at": (
+                            r.completed_at.isoformat() if r.completed_at else None
+                        ),
                     }
                     for r in recovery_states[:10]  # Last 10 recoveries
                 ],

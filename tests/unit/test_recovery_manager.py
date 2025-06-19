@@ -4,15 +4,15 @@ import os
 import sys
 import tempfile
 from datetime import datetime, timezone
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
 # Add src to path for imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../../src/storyteller"))
 
-from config import Config
-from models import (
+from config import Config  # noqa: E402
+from models import (  # noqa: E402
     FailureCategory,
     FailureSeverity,
     PipelineFailure,
@@ -20,7 +20,7 @@ from models import (
     RecoveryStatus,
     WorkflowCheckpoint,
 )
-from recovery_manager import RecoveryManager
+from recovery_manager import RecoveryManager  # noqa: E402
 
 
 class TestRecoveryManager:
@@ -45,7 +45,7 @@ class TestRecoveryManager:
         ):
             self.mock_db = MagicMock()
             mock_db_class.return_value = self.mock_db
-            
+
             self.mock_github = MagicMock()
             mock_github_class.return_value = self.mock_github
 
@@ -83,7 +83,7 @@ class TestRecoveryManager:
         """Clean up after tests."""
         try:
             os.unlink(self.temp_db.name)
-        except:
+        except OSError:
             pass
 
     @pytest.mark.asyncio
@@ -110,7 +110,7 @@ class TestRecoveryManager:
         assert checkpoint.commit_sha == "def456"
         assert checkpoint.checkpoint_name == "tests_passed"
         assert checkpoint.workflow_state == {"current_step": "testing"}
-        
+
         self.mock_db.store_workflow_checkpoint.assert_called_once()
 
     @pytest.mark.asyncio
@@ -127,18 +127,18 @@ class TestRecoveryManager:
         assert recovery_state.recovery_type == "retry"
         assert recovery_state.status == RecoveryStatus.PENDING
         assert len(recovery_state.recovery_plan) > 0
-        
+
         self.mock_db.store_recovery_state.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_initiate_resume_recovery(self):
         """Test initiating a resume recovery."""
         self.mock_db.store_recovery_state.return_value = True
-        
+
         # Set the checkpoint creation time to be before the failure detection time
         self.test_checkpoint.created_at = datetime.now(timezone.utc).replace(hour=10)
         self.test_failure.detected_at = datetime.now(timezone.utc).replace(hour=12)
-        
+
         self.mock_db.get_workflow_checkpoints.return_value = [self.test_checkpoint]
 
         recovery_state = await self.recovery_manager.initiate_recovery(
@@ -147,7 +147,7 @@ class TestRecoveryManager:
 
         assert recovery_state.recovery_type == "resume"
         assert recovery_state.target_checkpoint_id == self.test_checkpoint.id
-        
+
         self.mock_db.get_workflow_checkpoints.assert_called_once()
         self.mock_db.store_recovery_state.assert_called_once()
 
@@ -177,7 +177,7 @@ class TestRecoveryManager:
         assert success is True
         assert recovery_state.status == RecoveryStatus.COMPLETED
         assert len(recovery_state.progress_steps) > 0
-        
+
         # Verify database calls
         assert self.mock_db.store_recovery_state.call_count >= 2
 
@@ -232,8 +232,9 @@ class TestRecoveryManager:
         """Test rolling back to a checkpoint."""
         # Mock validation to return valid state
         with patch.object(
-            self.recovery_manager, "validate_state", 
-            return_value={"is_valid": True, "errors": [], "warnings": []}
+            self.recovery_manager,
+            "validate_state",
+            return_value={"is_valid": True, "errors": [], "warnings": []},
         ):
             success = await self.recovery_manager.rollback_to_checkpoint(
                 self.test_checkpoint, reason="test_rollback"
@@ -246,8 +247,13 @@ class TestRecoveryManager:
         """Test rollback failure with invalid checkpoint."""
         # Mock validation to return invalid state
         with patch.object(
-            self.recovery_manager, "validate_state",
-            return_value={"is_valid": False, "errors": ["Corrupted state"], "warnings": []}
+            self.recovery_manager,
+            "validate_state",
+            return_value={
+                "is_valid": False,
+                "errors": ["Corrupted state"],
+                "warnings": [],
+            },
         ):
             success = await self.recovery_manager.rollback_to_checkpoint(
                 self.test_checkpoint, reason="test_rollback"
@@ -298,7 +304,9 @@ class TestRecoveryManager:
         """Test finding resumption point when no checkpoints exist."""
         self.mock_db.get_workflow_checkpoints.return_value = []
 
-        resumption_point = await self.recovery_manager._find_resumption_point(self.test_failure)
+        resumption_point = await self.recovery_manager._find_resumption_point(
+            self.test_failure
+        )
 
         assert resumption_point is None
 
@@ -314,13 +322,15 @@ class TestRecoveryManager:
             commit_sha=self.test_failure.commit_sha,
             created_at=datetime.now(timezone.utc).replace(hour=10),  # Earlier time
         )
-        
+
         # Set failure detection time to be later
         self.test_failure.detected_at = datetime.now(timezone.utc).replace(hour=12)
 
         self.mock_db.get_workflow_checkpoints.return_value = [valid_checkpoint]
 
-        resumption_point = await self.recovery_manager._find_resumption_point(self.test_failure)
+        resumption_point = await self.recovery_manager._find_resumption_point(
+            self.test_failure
+        )
 
         assert resumption_point is not None
         assert resumption_point.id == valid_checkpoint.id
@@ -328,7 +338,9 @@ class TestRecoveryManager:
     @pytest.mark.asyncio
     async def test_create_recovery_plan_retry(self):
         """Test creating a recovery plan for retry."""
-        plan = await self.recovery_manager._create_recovery_plan(self.test_failure, "retry")
+        plan = await self.recovery_manager._create_recovery_plan(
+            self.test_failure, "retry"
+        )
 
         assert len(plan) > 0
         assert "analyze_failure_cause" in plan
@@ -338,7 +350,9 @@ class TestRecoveryManager:
     @pytest.mark.asyncio
     async def test_create_recovery_plan_resume(self):
         """Test creating a recovery plan for resume."""
-        plan = await self.recovery_manager._create_recovery_plan(self.test_failure, "resume")
+        plan = await self.recovery_manager._create_recovery_plan(
+            self.test_failure, "resume"
+        )
 
         assert len(plan) > 0
         assert "identify_resumption_point" in plan
@@ -348,7 +362,9 @@ class TestRecoveryManager:
     @pytest.mark.asyncio
     async def test_create_recovery_plan_rollback(self):
         """Test creating a recovery plan for rollback."""
-        plan = await self.recovery_manager._create_recovery_plan(self.test_failure, "rollback")
+        plan = await self.recovery_manager._create_recovery_plan(
+            self.test_failure, "rollback"
+        )
 
         assert len(plan) > 0
         assert "identify_rollback_target" in plan

@@ -695,7 +695,9 @@ class PipelineMonitor:
     ) -> Optional:
         """Initiate enhanced recovery using the recovery manager."""
         if not self.recovery_manager:
-            logger.warning("Recovery manager not available, falling back to basic retry")
+            logger.warning(
+                "Recovery manager not available, falling back to basic retry"
+            )
             return await self.retry_failed_pipeline(failure)
 
         try:
@@ -720,7 +722,9 @@ class PipelineMonitor:
             success = await self.recovery_manager.execute_recovery(recovery_state)
 
             if success:
-                logger.info(f"Enhanced recovery {recovery_state.id} completed successfully")
+                logger.info(
+                    f"Enhanced recovery {recovery_state.id} completed successfully"
+                )
                 # Mark original failure as resolved
                 failure.resolved_at = datetime.now(timezone.utc)
                 self.database.store_pipeline_failure(failure)
@@ -741,20 +745,28 @@ class PipelineMonitor:
             checkpoints = self.recovery_manager.database.get_workflow_checkpoints(
                 repository=failure.repository, limit=5
             )
-            
+
             # If we have recent checkpoints, consider resume
             recent_checkpoints = [
-                cp for cp in checkpoints
-                if cp.run_id == failure.pipeline_id or cp.commit_sha == failure.commit_sha
+                cp
+                for cp in checkpoints
+                if cp.run_id == failure.pipeline_id
+                or cp.commit_sha == failure.commit_sha
             ]
-            
+
             if recent_checkpoints:
                 # For build/dependency failures, prefer resume
-                if failure.category in [FailureCategory.BUILD, FailureCategory.DEPENDENCY]:
+                if failure.category in [
+                    FailureCategory.BUILD,
+                    FailureCategory.DEPENDENCY,
+                ]:
                     return "resume"
-                
+
                 # For critical failures with good checkpoints, consider rollback
-                if failure.severity == FailureSeverity.CRITICAL and len(recent_checkpoints) > 1:
+                if (
+                    failure.severity == FailureSeverity.CRITICAL
+                    and len(recent_checkpoints) > 1
+                ):
                     return "rollback"
 
         # For simple failures, use retry
@@ -790,9 +802,9 @@ class PipelineMonitor:
                     "retry_count": failure.retry_count,
                 },
             )
-            
+
             logger.info(f"Created pre-recovery checkpoint {checkpoint.id}")
-            
+
         except Exception as e:
             logger.warning(f"Failed to create pre-recovery checkpoint: {e}")
 

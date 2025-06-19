@@ -639,3 +639,254 @@ class WorkflowProcessor:
                 message="Failed to export pipeline data",
                 error=str(e),
             )
+
+    async def create_checkpoint_workflow(
+        self,
+        repository: str,
+        workflow_name: str,
+        run_id: str,
+        commit_sha: str,
+        checkpoint_type: str = "step",
+        checkpoint_name: str = "",
+    ) -> WorkflowResult:
+        """Create a workflow checkpoint for recovery purposes."""
+        try:
+            if not self.pipeline_monitor.recovery_manager:
+                return WorkflowResult(
+                    success=False,
+                    message="Recovery manager not available",
+                    error="Recovery functionality not enabled",
+                )
+
+            checkpoint = await self.pipeline_monitor.recovery_manager.create_checkpoint(
+                repository=repository,
+                workflow_name=workflow_name,
+                run_id=run_id,
+                commit_sha=commit_sha,
+                checkpoint_type=checkpoint_type,
+                checkpoint_name=checkpoint_name,
+            )
+
+            return WorkflowResult(
+                success=True,
+                message=f"Created checkpoint {checkpoint.id}",
+                data={
+                    "checkpoint_id": checkpoint.id,
+                    "repository": checkpoint.repository,
+                    "workflow_name": checkpoint.workflow_name,
+                    "checkpoint_name": checkpoint.checkpoint_name,
+                    "created_at": checkpoint.created_at.isoformat(),
+                },
+            )
+
+        except Exception as e:
+            logger.error(f"Failed to create checkpoint: {e}")
+            return WorkflowResult(
+                success=False,
+                message="Failed to create checkpoint",
+                error=str(e),
+            )
+
+    async def initiate_recovery_workflow(
+        self, failure_id: str, recovery_type: str = "auto"
+    ) -> WorkflowResult:
+        """Initiate recovery for a pipeline failure."""
+        try:
+            if not self.pipeline_monitor.recovery_manager:
+                return WorkflowResult(
+                    success=False,
+                    message="Recovery manager not available",
+                    error="Recovery functionality not enabled",
+                )
+
+            # Get the failure
+            failures = self.pipeline_monitor.database.get_recent_pipeline_failures(days=30)
+            failure = None
+            for f in failures:
+                if f.id == failure_id:
+                    failure = f
+                    break
+
+            if not failure:
+                return WorkflowResult(
+                    success=False,
+                    message=f"Failure {failure_id} not found",
+                    error="Invalid failure ID",
+                )
+
+            # Initiate recovery
+            recovery_state = await self.pipeline_monitor.initiate_enhanced_recovery(
+                failure, recovery_type
+            )
+
+            if recovery_state:
+                return WorkflowResult(
+                    success=True,
+                    message=f"Recovery {recovery_state.id} initiated",
+                    data={
+                        "recovery_id": recovery_state.id,
+                        "recovery_type": recovery_state.recovery_type,
+                        "status": recovery_state.status.value,
+                        "failure_id": recovery_state.failure_id,
+                    },
+                )
+            else:
+                return WorkflowResult(
+                    success=False,
+                    message="Failed to initiate recovery",
+                    error="Recovery initiation failed",
+                )
+
+        except Exception as e:
+            logger.error(f"Failed to initiate recovery: {e}")
+            return WorkflowResult(
+                success=False,
+                message="Failed to initiate recovery",
+                error=str(e),
+            )
+
+    def get_recovery_status_workflow(self, recovery_id: str) -> WorkflowResult:
+        """Get the status of a recovery operation."""
+        try:
+            if not self.pipeline_monitor.recovery_manager:
+                return WorkflowResult(
+                    success=False,
+                    message="Recovery manager not available",
+                    error="Recovery functionality not enabled",
+                )
+
+            recovery_state = self.pipeline_monitor.recovery_manager.database.get_recovery_state_by_id(
+                recovery_id
+            )
+
+            if not recovery_state:
+                return WorkflowResult(
+                    success=False,
+                    message=f"Recovery {recovery_id} not found",
+                    error="Invalid recovery ID",
+                )
+
+            return WorkflowResult(
+                success=True,
+                message=f"Recovery status for {recovery_id}",
+                data={
+                    "recovery_id": recovery_state.id,
+                    "status": recovery_state.status.value,
+                    "recovery_type": recovery_state.recovery_type,
+                    "repository": recovery_state.repository,
+                    "started_at": recovery_state.started_at.isoformat(),
+                    "completed_at": (
+                        recovery_state.completed_at.isoformat()
+                        if recovery_state.completed_at
+                        else None
+                    ),
+                    "progress_steps": recovery_state.progress_steps,
+                    "recovery_plan": recovery_state.recovery_plan,
+                },
+            )
+
+        except Exception as e:
+            logger.error(f"Failed to get recovery status: {e}")
+            return WorkflowResult(
+                success=False,
+                message="Failed to get recovery status",
+                error=str(e),
+            )
+
+    def get_recovery_dashboard_workflow(
+        self, repository: Optional[str] = None
+    ) -> WorkflowResult:
+        """Get recovery dashboard data."""
+        try:
+            if not self.pipeline_monitor.recovery_manager:
+                return WorkflowResult(
+                    success=False,
+                    message="Recovery manager not available",
+                    error="Recovery functionality not enabled",
+                )
+
+            dashboard_data = self.pipeline_monitor.recovery_manager.get_recovery_dashboard_data(
+                repository=repository
+            )
+
+            if "error" in dashboard_data:
+                return WorkflowResult(
+                    success=False,
+                    message="Failed to get recovery dashboard data",
+                    error=dashboard_data["error"],
+                )
+
+            return WorkflowResult(
+                success=True,
+                message="Recovery dashboard data retrieved",
+                data=dashboard_data,
+            )
+
+        except Exception as e:
+            logger.error(f"Failed to get recovery dashboard: {e}")
+            return WorkflowResult(
+                success=False,
+                message="Failed to get recovery dashboard",
+                error=str(e),
+            )
+
+    async def rollback_to_checkpoint_workflow(
+        self, checkpoint_id: str, reason: str = "manual_rollback"
+    ) -> WorkflowResult:
+        """Rollback to a specific checkpoint."""
+        try:
+            if not self.pipeline_monitor.recovery_manager:
+                return WorkflowResult(
+                    success=False,
+                    message="Recovery manager not available",
+                    error="Recovery functionality not enabled",
+                )
+
+            # Get the checkpoint
+            checkpoints = self.pipeline_monitor.recovery_manager.database.get_workflow_checkpoints(
+                limit=100
+            )
+            checkpoint = None
+            for cp in checkpoints:
+                if cp.id == checkpoint_id:
+                    checkpoint = cp
+                    break
+
+            if not checkpoint:
+                return WorkflowResult(
+                    success=False,
+                    message=f"Checkpoint {checkpoint_id} not found",
+                    error="Invalid checkpoint ID",
+                )
+
+            # Execute rollback
+            success = await self.pipeline_monitor.recovery_manager.rollback_to_checkpoint(
+                checkpoint, reason
+            )
+
+            if success:
+                return WorkflowResult(
+                    success=True,
+                    message=f"Successfully rolled back to checkpoint {checkpoint_id}",
+                    data={
+                        "checkpoint_id": checkpoint.id,
+                        "repository": checkpoint.repository,
+                        "workflow_name": checkpoint.workflow_name,
+                        "checkpoint_name": checkpoint.checkpoint_name,
+                        "rollback_reason": reason,
+                    },
+                )
+            else:
+                return WorkflowResult(
+                    success=False,
+                    message=f"Failed to rollback to checkpoint {checkpoint_id}",
+                    error="Rollback operation failed",
+                )
+
+        except Exception as e:
+            logger.error(f"Failed to rollback to checkpoint: {e}")
+            return WorkflowResult(
+                success=False,
+                message="Failed to rollback to checkpoint",
+                error=str(e),
+            )

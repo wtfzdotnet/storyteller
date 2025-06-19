@@ -29,6 +29,25 @@ class StoryType(Enum):
     SUB_STORY = "sub_story"
 
 
+class VotingPosition(Enum):
+    """Position enumeration for consensus voting."""
+
+    AGREE = "agree"
+    DISAGREE = "disagree"
+    ABSTAIN = "abstain"
+    NEEDS_CLARIFICATION = "needs_clarification"
+
+
+class ConsensusStatus(Enum):
+    """Status enumeration for consensus processes."""
+
+    PENDING = "pending"
+    IN_PROGRESS = "in_progress"
+    REACHED = "reached"
+    FAILED = "failed"
+    TIMEOUT = "timeout"
+
+
 @dataclass
 class BaseStory:
     """Base class for all story types with common fields."""
@@ -1054,3 +1073,261 @@ class RecoveryState:
             ),
             metadata=json.loads(data["metadata"]) if data["metadata"] else {},
         )
+
+
+@dataclass
+class RoleVote:
+    """Represents a vote from a specific role in a consensus process."""
+
+    id: str = field(default_factory=lambda: f"vote_{uuid.uuid4().hex[:8]}")
+    role_name: str = ""
+    participant_id: str = ""
+    position: VotingPosition = VotingPosition.ABSTAIN
+    confidence: float = 0.5  # 0.0 to 1.0
+    weight: float = 1.0  # Role-specific weight
+    rationale: str = ""
+    concerns: List[str] = field(default_factory=list)
+    suggestions: List[str] = field(default_factory=list)
+    created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    metadata: Dict[str, Any] = field(default_factory=dict)
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to dictionary for storage."""
+        return {
+            "id": self.id,
+            "role_name": self.role_name,
+            "participant_id": self.participant_id,
+            "position": self.position.value,
+            "confidence": self.confidence,
+            "weight": self.weight,
+            "rationale": self.rationale,
+            "concerns": json.dumps(self.concerns),
+            "suggestions": json.dumps(self.suggestions),
+            "created_at": self.created_at.isoformat(),
+            "metadata": json.dumps(self.metadata),
+        }
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "RoleVote":
+        """Create from dictionary."""
+        return cls(
+            id=data["id"],
+            role_name=data["role_name"],
+            participant_id=data["participant_id"],
+            position=VotingPosition(data["position"]),
+            confidence=data["confidence"],
+            weight=data["weight"],
+            rationale=data["rationale"],
+            concerns=json.loads(data["concerns"]) if data["concerns"] else [],
+            suggestions=json.loads(data["suggestions"]) if data["suggestions"] else [],
+            created_at=datetime.fromisoformat(data["created_at"]),
+            metadata=json.loads(data["metadata"]) if data["metadata"] else {},
+        )
+
+
+@dataclass
+class ConsensusResult:
+    """Represents the result of a consensus process."""
+
+    id: str = field(default_factory=lambda: f"consensus_{uuid.uuid4().hex[:8]}")
+    conversation_id: str = ""
+    status: ConsensusStatus = ConsensusStatus.PENDING
+    threshold: float = 0.7  # Required consensus threshold (0.0 to 1.0)
+    achieved_score: float = 0.0  # Actual consensus score achieved
+    votes: List[RoleVote] = field(default_factory=list)
+    decision: str = ""
+    rationale: str = ""
+    dissenting_concerns: List[str] = field(default_factory=list)
+    required_roles: List[str] = field(default_factory=list)
+    participating_roles: List[str] = field(default_factory=list)
+    started_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    completed_at: Optional[datetime] = None
+    iterations: int = 0
+    max_iterations: int = 10
+    metadata: Dict[str, Any] = field(default_factory=dict)
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to dictionary for storage."""
+        return {
+            "id": self.id,
+            "conversation_id": self.conversation_id,
+            "status": self.status.value,
+            "threshold": self.threshold,
+            "achieved_score": self.achieved_score,
+            "decision": self.decision,
+            "rationale": self.rationale,
+            "dissenting_concerns": json.dumps(self.dissenting_concerns),
+            "required_roles": json.dumps(self.required_roles),
+            "participating_roles": json.dumps(self.participating_roles),
+            "started_at": self.started_at.isoformat(),
+            "completed_at": (
+                self.completed_at.isoformat() if self.completed_at else None
+            ),
+            "iterations": self.iterations,
+            "max_iterations": self.max_iterations,
+            "metadata": json.dumps(self.metadata),
+        }
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "ConsensusResult":
+        """Create from dictionary."""
+        return cls(
+            id=data["id"],
+            conversation_id=data["conversation_id"],
+            status=ConsensusStatus(data["status"]),
+            threshold=data["threshold"],
+            achieved_score=data["achieved_score"],
+            decision=data["decision"],
+            rationale=data["rationale"],
+            dissenting_concerns=(
+                json.loads(data["dissenting_concerns"])
+                if data["dissenting_concerns"]
+                else []
+            ),
+            required_roles=(
+                json.loads(data["required_roles"]) if data["required_roles"] else []
+            ),
+            participating_roles=(
+                json.loads(data["participating_roles"])
+                if data["participating_roles"]
+                else []
+            ),
+            started_at=datetime.fromisoformat(data["started_at"]),
+            completed_at=(
+                datetime.fromisoformat(data["completed_at"])
+                if data["completed_at"]
+                else None
+            ),
+            iterations=data["iterations"],
+            max_iterations=data["max_iterations"],
+            metadata=json.loads(data["metadata"]) if data["metadata"] else {},
+        )
+
+    def add_vote(self, vote: RoleVote) -> None:
+        """Add a vote to the consensus process."""
+        # Remove any existing vote from the same role
+        self.votes = [v for v in self.votes if v.role_name != vote.role_name]
+        self.votes.append(vote)
+
+        # Update participating roles
+        if vote.role_name not in self.participating_roles:
+            self.participating_roles.append(vote.role_name)
+
+    def get_vote_by_role(self, role_name: str) -> Optional[RoleVote]:
+        """Get the vote from a specific role."""
+        for vote in self.votes:
+            if vote.role_name == role_name:
+                return vote
+        return None
+
+    def calculate_consensus_score(self) -> float:
+        """Calculate the current consensus score based on weighted votes."""
+        if not self.votes:
+            return 0.0
+
+        total_weight = 0.0
+        agreement_weight = 0.0
+
+        for vote in self.votes:
+            total_weight += vote.weight
+
+            if vote.position == VotingPosition.AGREE:
+                # Full weight for agreement, scaled by confidence
+                agreement_weight += vote.weight * vote.confidence
+            elif vote.position == VotingPosition.DISAGREE:
+                # Negative contribution for disagreement
+                agreement_weight -= vote.weight * vote.confidence * 0.5
+            # Abstain and needs_clarification contribute 0
+
+        if total_weight == 0:
+            return 0.0
+
+        # Normalize to 0-1 range
+        score = max(0.0, min(1.0, agreement_weight / total_weight))
+        self.achieved_score = score
+        return score
+
+    def check_consensus_reached(self) -> bool:
+        """Check if consensus has been reached based on threshold."""
+        current_score = self.calculate_consensus_score()
+
+        # Check if all required roles have participated
+        if self.required_roles:
+            missing_roles = set(self.required_roles) - set(self.participating_roles)
+            if missing_roles:
+                return False
+
+        return current_score >= self.threshold
+
+    def get_dissenting_concerns(self) -> List[str]:
+        """Get all concerns from dissenting votes."""
+        concerns = []
+        for vote in self.votes:
+            if vote.position == VotingPosition.DISAGREE:
+                concerns.extend(vote.concerns)
+        self.dissenting_concerns = concerns
+        return concerns
+
+    def generate_decision_rationale(self) -> str:
+        """Generate a comprehensive decision rationale."""
+        if not self.votes:
+            return "No votes received for consensus process."
+
+        total_votes = len(self.votes)
+        agree_votes = len([v for v in self.votes if v.position == VotingPosition.AGREE])
+        disagree_votes = len(
+            [v for v in self.votes if v.position == VotingPosition.DISAGREE]
+        )
+        abstain_votes = len(
+            [v for v in self.votes if v.position == VotingPosition.ABSTAIN]
+        )
+        clarification_votes = len(
+            [v for v in self.votes if v.position == VotingPosition.NEEDS_CLARIFICATION]
+        )
+
+        score = self.calculate_consensus_score()
+
+        rationale_parts = [
+            f"Consensus Score: {score:.2f} (threshold: {self.threshold:.2f})",
+            f"Vote Distribution: {agree_votes} agree, {disagree_votes} disagree, {abstain_votes} abstain, {clarification_votes} need clarification",
+            f"Total Participating Roles: {total_votes}",
+        ]
+
+        if self.required_roles:
+            rationale_parts.append(f"Required Roles: {', '.join(self.required_roles)}")
+            missing_roles = set(self.required_roles) - set(self.participating_roles)
+            if missing_roles:
+                rationale_parts.append(
+                    f"Missing Required Roles: {', '.join(missing_roles)}"
+                )
+
+        # Add role-specific insights
+        high_weight_agreements = [
+            v
+            for v in self.votes
+            if v.position == VotingPosition.AGREE and v.weight > 1.0
+        ]
+        if high_weight_agreements:
+            rationale_parts.append(
+                f"Strong Agreement from: {', '.join([v.role_name for v in high_weight_agreements])}"
+            )
+
+        strong_disagreements = [
+            v
+            for v in self.votes
+            if v.position == VotingPosition.DISAGREE and v.confidence > 0.7
+        ]
+        if strong_disagreements:
+            rationale_parts.append(
+                f"Strong Disagreement from: {', '.join([v.role_name for v in strong_disagreements])}"
+            )
+
+        # Add dissenting concerns if any
+        concerns = self.get_dissenting_concerns()
+        if concerns:
+            rationale_parts.append(
+                f"Key Concerns Raised: {'; '.join(concerns[:3])}"
+            )  # Limit to top 3
+
+        self.rationale = "\n".join(rationale_parts)
+        return self.rationale

@@ -68,6 +68,13 @@ class StoryProcessor:
         self.role_assignment_engine = RoleAssignmentEngine(self.config)
         self.context_reader = MultiRepositoryContextReader(self.config)
 
+        # Initialize GitHub storage if configured
+        self.github_storage = None
+        if self.config.storage.primary == "github":
+            from github_storage import GitHubStorageManager
+
+            self.github_storage = GitHubStorageManager(self.config)
+
     def _generate_story_id(self) -> str:
         """Generate a unique story ID."""
         import uuid
@@ -729,6 +736,38 @@ class StoryManager:
 
         self.database.save_story(epic)
         logger.info(f"Created epic: {epic.title} (ID: {epic.id})")
+        return epic
+
+    async def create_epic_with_github_storage(
+        self,
+        title: str,
+        description: str,
+        business_value: str = "",
+        acceptance_criteria: List[str] = None,
+        target_repositories: List[str] = None,
+        estimated_duration_weeks: Optional[int] = None,
+        repository_name: Optional[str] = None,
+    ) -> Epic:
+        """Create a new epic using GitHub storage."""
+        epic = Epic(
+            title=title,
+            description=description,
+            business_value=business_value,
+            acceptance_criteria=acceptance_criteria or [],
+            target_repositories=target_repositories or [],
+            estimated_duration_weeks=estimated_duration_weeks,
+        )
+
+        if self.github_storage:
+            await self.github_storage.save_epic(epic, repository_name)
+            logger.info(f"Created epic in GitHub: {epic.title} (ID: {epic.id})")
+        else:
+            # Fallback to SQLite if GitHub storage not available
+            self.database.save_story(epic)
+            logger.info(
+                f"Created epic in SQLite (fallback): {epic.title} (ID: {epic.id})"
+            )
+
         return epic
 
     def create_user_story(

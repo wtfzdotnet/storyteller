@@ -62,12 +62,28 @@ class EscalationConfig:
 
 
 @dataclass
+class StorageConfig:
+    """Configuration for storage backend selection."""
+
+    primary: str = "sqlite"  # "github" or "sqlite"
+    cache_enabled: bool = False
+    deployment_context: str = "pipeline"  # "pipeline" or "mcp"
+    issue_label_prefix: str = "storyteller"
+    epic_label: str = "epic"
+    user_story_label: str = "user-story"
+    sub_story_label: str = "sub-story"
+
+
+@dataclass
 class Config:
     """Main configuration class for the AI Story Management System."""
 
     # GitHub Configuration
     github_token: str
     github_repository: Optional[str] = None
+
+    # Storage Configuration
+    storage: StorageConfig = field(default_factory=StorageConfig)
 
     # LLM Configuration
     default_llm_provider: str = "github"
@@ -125,6 +141,12 @@ def load_config() -> Config:
     config = Config(
         github_token=github_token,
         github_repository=os.getenv("GITHUB_REPOSITORY"),
+        storage=StorageConfig(
+            primary=os.getenv("STORAGE_PRIMARY", "sqlite"),
+            cache_enabled=os.getenv("STORAGE_CACHE_ENABLED", "false").lower() == "true",
+            deployment_context=os.getenv("DEPLOYMENT_CONTEXT", "pipeline"),
+            issue_label_prefix=os.getenv("STORAGE_LABEL_PREFIX", "storyteller"),
+        ),
         default_llm_provider=os.getenv("DEFAULT_LLM_PROVIDER", "github"),
         openai_api_key=os.getenv("OPENAI_API_KEY"),
         ollama_api_host=os.getenv("OLLAMA_API_HOST", "http://localhost:11434"),
@@ -162,6 +184,28 @@ def load_config() -> Config:
 
             config.repositories = repositories
             config.default_repository = config_data.get("default_repository", "backend")
+
+            # Parse storage config
+            storage_data = config_data.get("storage", {})
+            config.storage = StorageConfig(
+                primary=storage_data.get("primary", config.storage.primary),
+                cache_enabled=storage_data.get(
+                    "cache_enabled", config.storage.cache_enabled
+                ),
+                deployment_context=storage_data.get(
+                    "deployment_context", config.storage.deployment_context
+                ),
+                issue_label_prefix=storage_data.get(
+                    "issue_label_prefix", config.storage.issue_label_prefix
+                ),
+                epic_label=storage_data.get("epic_label", config.storage.epic_label),
+                user_story_label=storage_data.get(
+                    "user_story_label", config.storage.user_story_label
+                ),
+                sub_story_label=storage_data.get(
+                    "sub_story_label", config.storage.sub_story_label
+                ),
+            )
 
             # Parse story workflow config
             workflow_data = config_data.get("story_workflow", {})

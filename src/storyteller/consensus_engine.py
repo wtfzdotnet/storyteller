@@ -4,13 +4,23 @@ import logging
 from datetime import datetime, timezone
 from typing import Dict, List, Optional, Tuple
 
-from .config import Config, get_config
-from .models import (
-    ConsensusResult,
-    ConsensusStatus,
-    RoleVote,
-    VotingPosition,
-)
+try:
+    from .config import Config, get_config
+    from .models import (
+        ConsensusResult,
+        ConsensusStatus,
+        RoleVote,
+        VotingPosition,
+    )
+except ImportError:
+    # Fallback for existing tests
+    from config import Config, get_config
+    from models import (
+        ConsensusResult,
+        ConsensusStatus,
+        RoleVote,
+        VotingPosition,
+    )
 
 logger = logging.getLogger(__name__)
 

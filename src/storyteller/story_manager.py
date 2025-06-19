@@ -67,11 +67,12 @@ class StoryProcessor:
         # Add role assignment engine and context manager
         self.role_assignment_engine = RoleAssignmentEngine(self.config)
         self.context_reader = MultiRepositoryContextReader(self.config)
-        
+
         # Initialize GitHub storage if configured
         self.github_storage = None
         if self.config.storage.primary == "github":
             from github_storage import GitHubStorageManager
+
             self.github_storage = GitHubStorageManager(self.config)
 
     def _generate_story_id(self) -> str:
@@ -763,8 +764,10 @@ class StoryManager:
         else:
             # Fallback to SQLite if GitHub storage not available
             self.database.save_story(epic)
-            logger.info(f"Created epic in SQLite (fallback): {epic.title} (ID: {epic.id})")
-        
+            logger.info(
+                f"Created epic in SQLite (fallback): {epic.title} (ID: {epic.id})"
+            )
+
         return epic
 
     def create_user_story(

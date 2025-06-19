@@ -64,7 +64,7 @@ class EscalationConfig:
 @dataclass
 class StorageConfig:
     """Configuration for storage backend selection."""
-    
+
     primary: str = "sqlite"  # "github" or "sqlite"
     cache_enabled: bool = False
     deployment_context: str = "pipeline"  # "pipeline" or "mcp"
@@ -189,12 +189,22 @@ def load_config() -> Config:
             storage_data = config_data.get("storage", {})
             config.storage = StorageConfig(
                 primary=storage_data.get("primary", config.storage.primary),
-                cache_enabled=storage_data.get("cache_enabled", config.storage.cache_enabled),
-                deployment_context=storage_data.get("deployment_context", config.storage.deployment_context),
-                issue_label_prefix=storage_data.get("issue_label_prefix", config.storage.issue_label_prefix),
+                cache_enabled=storage_data.get(
+                    "cache_enabled", config.storage.cache_enabled
+                ),
+                deployment_context=storage_data.get(
+                    "deployment_context", config.storage.deployment_context
+                ),
+                issue_label_prefix=storage_data.get(
+                    "issue_label_prefix", config.storage.issue_label_prefix
+                ),
                 epic_label=storage_data.get("epic_label", config.storage.epic_label),
-                user_story_label=storage_data.get("user_story_label", config.storage.user_story_label),
-                sub_story_label=storage_data.get("sub_story_label", config.storage.sub_story_label),
+                user_story_label=storage_data.get(
+                    "user_story_label", config.storage.user_story_label
+                ),
+                sub_story_label=storage_data.get(
+                    "sub_story_label", config.storage.sub_story_label
+                ),
             )
 
             # Parse story workflow config

@@ -989,19 +989,13 @@ class ManualIntervention:
             ),
             status=data["status"],
             affected_roles=(
-                json.loads(data["affected_roles"])
-                if data["affected_roles"]
-                else []
+                json.loads(data["affected_roles"]) if data["affected_roles"] else []
             ),
             override_data=(
-                json.loads(data["override_data"])
-                if data["override_data"]
-                else {}
+                json.loads(data["override_data"]) if data["override_data"] else {}
             ),
             audit_trail=(
-                json.loads(data["audit_trail"])
-                if data["audit_trail"]
-                else []
+                json.loads(data["audit_trail"]) if data["audit_trail"] else []
             ),
             metadata=json.loads(data["metadata"]) if data["metadata"] else {},
         )

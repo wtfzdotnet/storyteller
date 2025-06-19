@@ -320,26 +320,41 @@ class TestConversationManagerIntervention(unittest.TestCase):
         """Test conversation manager intervention workflow (synchronous parts)."""
         # Test the synchronous parts that don't require full setup
         import os
+        import tempfile
+        from pathlib import Path
+        
         os.environ['GITHUB_TOKEN'] = 'test_token'
         os.environ['DEFAULT_LLM_PROVIDER'] = 'github'
         
+        # Use a temporary database for this test
+        temp_db = tempfile.mktemp(suffix='.db')
         try:
             from src.storyteller.conversation_manager import ConversationManager
+            from unittest.mock import patch
             
-            manager = ConversationManager()
-            
-            # Test getting pending interventions (should be empty initially)
-            pending = manager.get_pending_interventions()
-            self.assertEqual(len(pending), 0)
-            
-            # Test getting non-existent intervention status
-            status = manager.get_intervention_status("non_existent_id")
-            self.assertIsNone(status)
+            # Mock the database to use our temporary database
+            with patch('src.storyteller.conversation_manager.DatabaseManager') as mock_db_class:
+                from src.storyteller.database import DatabaseManager
+                test_db = DatabaseManager(temp_db)
+                test_db.init_database()
+                mock_db_class.return_value = test_db
+                
+                manager = ConversationManager()
+                
+                # Test getting pending interventions (should be empty initially)
+                pending = manager.get_pending_interventions()
+                self.assertEqual(len(pending), 0)
+                
+                # Test getting non-existent intervention status
+                status = manager.get_intervention_status("non_existent_id")
+                self.assertIsNone(status)
             
         finally:
-            # Clean up environment variables
+            # Clean up environment variables and temp db
             os.environ.pop('GITHUB_TOKEN', None)
             os.environ.pop('DEFAULT_LLM_PROVIDER', None)
+            if Path(temp_db).exists():
+                Path(temp_db).unlink()
 
 
 def run_async_test(test_func):

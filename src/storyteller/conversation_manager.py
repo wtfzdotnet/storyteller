@@ -615,7 +615,7 @@ Manual intervention required to complete the decision process."""
         metadata: Optional[Dict[str, Any]] = None,
     ) -> str:
         """Trigger a manual intervention for a consensus process."""
-        
+
         conversation = self.database.get_conversation(conversation_id)
         if not conversation:
             raise ValueError(f"Conversation {conversation_id} not found")
@@ -664,7 +664,7 @@ Manual intervention required to complete the decision process."""
         override_data: Optional[Dict[str, Any]] = None,
     ) -> bool:
         """Resolve a manual intervention with human decision."""
-        
+
         # Get intervention details
         intervention = self.database.get_manual_intervention(intervention_id)
         if not intervention:
@@ -705,7 +705,7 @@ Manual intervention required to complete the decision process."""
         self, conversation_id: str, consensus_id: str
     ) -> Optional[str]:
         """Check if consensus requires intervention and trigger if needed."""
-        
+
         # Create consensus object for checking
         consensus = self.consensus_engine.create_consensus_process(
             conversation_id=conversation_id,
@@ -714,8 +714,10 @@ Manual intervention required to complete the decision process."""
         consensus.id = consensus_id
 
         # Check if intervention is needed
-        requires_intervention, reason = self.consensus_engine.check_consensus_requires_intervention(consensus)
-        
+        requires_intervention, reason = (
+            self.consensus_engine.check_consensus_requires_intervention(consensus)
+        )
+
         if requires_intervention:
             return await self.trigger_manual_intervention(
                 conversation_id=conversation_id,
@@ -723,7 +725,7 @@ Manual intervention required to complete the decision process."""
                 trigger_reason=reason,
                 intervention_type="decision",
             )
-        
+
         return None
 
     def get_pending_interventions(self, limit: int = 50) -> List[Dict[str, Any]]:
@@ -763,7 +765,11 @@ Manual intervention required to complete the decision process."""
             "intervener_id": intervention.intervener_id,
             "intervener_role": intervention.intervener_role,
             "triggered_at": intervention.triggered_at.isoformat(),
-            "resolved_at": intervention.resolved_at.isoformat() if intervention.resolved_at else None,
+            "resolved_at": (
+                intervention.resolved_at.isoformat()
+                if intervention.resolved_at
+                else None
+            ),
             "affected_roles": intervention.affected_roles,
             "audit_trail": intervention.audit_trail,
             "metadata": intervention.metadata,

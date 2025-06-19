@@ -453,18 +453,19 @@ class ConsensusEngine:
         trigger_reason: str = "failed_consensus",
         intervention_type: str = "decision",
         metadata: Optional[Dict[str, Any]] = None,
+        db: Optional = None,
     ) -> str:
         """
         Trigger a manual intervention for a consensus process.
-        
+
         Returns the intervention ID.
         """
         try:
-            from .models import ManualIntervention
             from .database import DatabaseManager
+            from .models import ManualIntervention
         except ImportError:
-            from models import ManualIntervention
             from database import DatabaseManager
+            from models import ManualIntervention
 
         # Create manual intervention record
         intervention = ManualIntervention(
@@ -485,8 +486,8 @@ class ConsensusEngine:
         )
 
         # Store in database
-        db = DatabaseManager()
-        if db.store_manual_intervention(intervention):
+        database = db or DatabaseManager()
+        if database.store_manual_intervention(intervention):
             logger.info(
                 f"Triggered manual intervention {intervention.id} for consensus {consensus.id}"
             )
@@ -505,10 +506,11 @@ class ConsensusEngine:
         intervener_id: str,
         intervener_role: str = "project-manager",
         override_data: Optional[Dict[str, Any]] = None,
+        db: Optional = None,
     ) -> bool:
         """
         Resolve a manual intervention with human decision.
-        
+
         Returns True if successful.
         """
         try:
@@ -516,9 +518,9 @@ class ConsensusEngine:
         except ImportError:
             from database import DatabaseManager
 
-        db = DatabaseManager()
-        intervention = db.get_manual_intervention(intervention_id)
-        
+        database = db or DatabaseManager()
+        intervention = database.get_manual_intervention(intervention_id)
+
         if not intervention:
             logger.error(f"Manual intervention {intervention_id} not found")
             return False
@@ -534,7 +536,7 @@ class ConsensusEngine:
         intervention.intervener_role = intervener_role
         intervention.status = "resolved"
         intervention.resolved_at = datetime.now(timezone.utc)
-        
+
         if override_data:
             intervention.override_data = override_data
 
@@ -546,7 +548,7 @@ class ConsensusEngine:
         )
 
         # Store updated intervention
-        if db.store_manual_intervention(intervention):
+        if database.store_manual_intervention(intervention):
             logger.info(
                 f"Resolved manual intervention {intervention_id} with decision: {human_decision}"
             )
@@ -560,33 +562,36 @@ class ConsensusEngine:
     ) -> Tuple[bool, str]:
         """
         Check if a consensus process requires manual intervention.
-        
+
         Returns (requires_intervention, reason).
         """
-        
+
         # Check for timeout
         if consensus.status == ConsensusStatus.TIMEOUT:
             return True, "timeout"
-        
+
         # Check for failed consensus
         if consensus.status == ConsensusStatus.FAILED:
             return True, "failed_consensus"
-        
+
         # Check for high-confidence disagreements from key roles
         high_weight_disagreements = [
-            v for v in consensus.votes
-            if v.position == VotingPosition.DISAGREE 
-            and v.weight > 1.0 
+            v
+            for v in consensus.votes
+            if v.position == VotingPosition.DISAGREE
+            and v.weight > 1.0
             and v.confidence > 0.8
         ]
-        
+
         if len(high_weight_disagreements) > 1:
             return True, "high_expertise_conflict"
-        
+
         # Check for stalled progress (low consensus score after multiple iterations)
-        if (consensus.iterations > 2 
-            and consensus.achieved_score < 0.4 
-            and consensus.status == ConsensusStatus.IN_PROGRESS):
+        if (
+            consensus.iterations > 2
+            and consensus.achieved_score < 0.4
+            and consensus.status == ConsensusStatus.IN_PROGRESS
+        ):
             return True, "stalled_progress"
-        
+
         return False, ""

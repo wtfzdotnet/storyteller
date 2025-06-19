@@ -1,17 +1,17 @@
 """Unit tests for consensus reaching algorithms."""
 
-import pytest
 from datetime import datetime, timezone
 from unittest.mock import Mock, patch
 
-from src.storyteller.consensus_engine import ConsensusEngine
-from src.storyteller.models import (
+import pytest
+from config import Config
+from consensus_engine import ConsensusEngine
+from models import (
     ConsensusResult,
     ConsensusStatus,
     RoleVote,
     VotingPosition,
 )
-from src.storyteller.config import Config
 
 
 class TestConsensusEngine:
@@ -177,7 +177,7 @@ class TestConsensusEngine:
         )
 
         score = self.engine.calculate_weighted_consensus(consensus)
-        
+
         # Expected: (1.5 * 1.0 - 1.3 * 0.9 * 0.5) / (1.5 + 1.3)
         expected_score = (1.5 - 1.3 * 0.9 * 0.5) / (1.5 + 1.3)
         assert abs(score - expected_score) < 0.01
@@ -271,7 +271,7 @@ class TestConsensusEngine:
         )
 
         success, actions, remaining = self.engine.resolve_conflicts(consensus)
-        
+
         assert success  # Should be successful since concerns are addressable
         assert len(actions) > 0
         assert "testing" in str(actions).lower() or "timeline" in str(actions).lower()
@@ -295,7 +295,7 @@ class TestConsensusEngine:
         )
 
         success, actions, remaining = self.engine.resolve_conflicts(consensus)
-        
+
         assert "microservices" in str(actions).lower()
 
     def test_auto_resolve_minor_conflicts(self):
@@ -326,7 +326,7 @@ class TestConsensusEngine:
         )
 
         resolved = self.engine.auto_resolve_minor_conflicts(consensus)
-        
+
         assert resolved
         # Both votes should be converted to abstain
         assert all(vote.position == VotingPosition.ABSTAIN for vote in consensus.votes)
@@ -501,13 +501,13 @@ class TestConsensusResult:
     def test_add_vote_to_consensus(self):
         """Test adding votes to consensus result."""
         consensus = ConsensusResult()
-        
+
         vote1 = RoleVote(role_name="developer", position=VotingPosition.AGREE)
         vote2 = RoleVote(role_name="tester", position=VotingPosition.DISAGREE)
-        
+
         consensus.add_vote(vote1)
         consensus.add_vote(vote2)
-        
+
         assert len(consensus.votes) == 2
         assert "developer" in consensus.participating_roles
         assert "tester" in consensus.participating_roles
@@ -515,20 +515,20 @@ class TestConsensusResult:
     def test_vote_replacement_in_consensus(self):
         """Test that adding a new vote from same role replaces the old one."""
         consensus = ConsensusResult()
-        
+
         vote1 = RoleVote(role_name="developer", position=VotingPosition.AGREE)
         vote2 = RoleVote(role_name="developer", position=VotingPosition.DISAGREE)
-        
+
         consensus.add_vote(vote1)
         consensus.add_vote(vote2)
-        
+
         assert len(consensus.votes) == 1
         assert consensus.votes[0].position == VotingPosition.DISAGREE
 
     def test_consensus_score_calculation(self):
         """Test the consensus score calculation in ConsensusResult."""
         consensus = ConsensusResult()
-        
+
         # Add agreement vote
         vote1 = RoleVote(
             role_name="architect",
@@ -537,7 +537,7 @@ class TestConsensusResult:
             weight=1.5,
         )
         consensus.add_vote(vote1)
-        
+
         score = consensus.calculate_consensus_score()
         assert score == 1.0  # Full agreement
 
@@ -549,7 +549,7 @@ class TestConsensusResult:
             weight=1.0,
         )
         consensus.add_vote(vote2)
-        
+
         score = consensus.calculate_consensus_score()
         # Expected: (1.5 * 1.0 - 1.0 * 0.8 * 0.5) / (1.5 + 1.0) = 0.84
         expected = (1.5 - 1.0 * 0.8 * 0.5) / (1.5 + 1.0)
@@ -561,7 +561,7 @@ class TestConsensusResult:
             threshold=0.7,
             required_roles=["system-architect"],
         )
-        
+
         # Add some votes
         vote1 = RoleVote(
             role_name="system-architect",
@@ -569,19 +569,19 @@ class TestConsensusResult:
             confidence=0.9,
             weight=1.5,
         )
-        
+
         vote2 = RoleVote(
             role_name="developer",
             position=VotingPosition.DISAGREE,
             confidence=0.7,
             concerns=["Performance impact"],
         )
-        
+
         consensus.add_vote(vote1)
         consensus.add_vote(vote2)
-        
+
         rationale = consensus.generate_decision_rationale()
-        
+
         assert "Consensus Score:" in rationale
         assert "Vote Distribution:" in rationale
         assert "system-architect" in rationale
@@ -595,13 +595,13 @@ class TestConsensusResult:
             threshold=0.8,
             decision="Approved feature X",
         )
-        
+
         # Serialize
         consensus_dict = consensus.to_dict()
         assert consensus_dict["conversation_id"] == "conv_123"
         assert consensus_dict["status"] == "reached"
         assert consensus_dict["threshold"] == 0.8
-        
+
         # Deserialize
         restored = ConsensusResult.from_dict(consensus_dict)
         assert restored.conversation_id == consensus.conversation_id

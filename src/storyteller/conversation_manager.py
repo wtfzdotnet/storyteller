@@ -6,17 +6,17 @@ from typing import Any, Dict, List, Optional
 
 try:
     from .config import Config, get_config
-    from .database import DatabaseManager
-    from .models import Conversation, ConversationParticipant, Message
-    from .multi_repo_context import MultiRepositoryContextReader
     from .consensus_engine import ConsensusEngine
+    from .database import DatabaseManager
+    from .models import Conversation, ConversationParticipant, Message, VotingPosition
+    from .multi_repo_context import MultiRepositoryContextReader
 except ImportError:
     # Fallback for existing tests
     from config import Config, get_config
-    from database import DatabaseManager
-    from models import Conversation, ConversationParticipant, Message
-    from multi_repo_context import MultiRepositoryContextReader
     from consensus_engine import ConsensusEngine
+    from database import DatabaseManager
+    from models import Conversation, ConversationParticipant, Message, VotingPosition
+    from multi_repo_context import MultiRepositoryContextReader
 
 logger = logging.getLogger(__name__)
 
@@ -335,7 +335,7 @@ class ConversationManager:
         threshold: Optional[float] = None,
     ) -> str:
         """Initiate a consensus process for a conversation."""
-        
+
         conversation = self.database.get_conversation(conversation_id)
         if not conversation:
             raise ValueError(f"Conversation {conversation_id} not found")
@@ -390,9 +390,7 @@ Please provide your position on this decision."""
         suggestions: Optional[List[str]] = None,
     ) -> bool:
         """Submit a vote for a consensus process."""
-        
-        from .models import VotingPosition
-        
+
         # Validate inputs
         try:
             voting_position = VotingPosition(position.lower())
@@ -430,10 +428,14 @@ Confidence: {confidence:.0%}
 Rationale: {rationale}"""
 
         if concerns:
-            vote_content += f"\n\nConcerns:\n" + "\n".join(f"• {concern}" for concern in concerns)
+            vote_content += f"\n\nConcerns:\n" + "\n".join(
+                f"• {concern}" for concern in concerns
+            )
 
         if suggestions:
-            vote_content += f"\n\nSuggestions:\n" + "\n".join(f"• suggestion" for suggestion in suggestions)
+            vote_content += f"\n\nSuggestions:\n" + "\n".join(
+                f"• suggestion" for suggestion in suggestions
+            )
 
         await self.add_message(
             conversation_id=conversation_id,
@@ -453,14 +455,12 @@ Rationale: {rationale}"""
 
         return True
 
-    async def _finalize_consensus(
-        self, conversation_id: str, consensus
-    ) -> None:
+    async def _finalize_consensus(self, conversation_id: str, consensus) -> None:
         """Finalize a consensus process and add result message."""
-        
+
         # Generate comprehensive report
         report = self.consensus_engine.generate_consensus_report(consensus)
-        
+
         # Create finalization message
         if consensus.status.value == "reached":
             result_content = f"""**🎉 Consensus Reached**
@@ -482,7 +482,9 @@ Final Score: {consensus.achieved_score:.0%} (required: {consensus.threshold:.0%}
 {consensus.rationale}
 
 **Remaining Concerns:**
-""" + "\n".join(f"• {concern}" for concern in consensus.get_dissenting_concerns()[:5])
+""" + "\n".join(
+                f"• {concern}" for concern in consensus.get_dissenting_concerns()[:5]
+            )
 
             result_content += """
 
@@ -502,7 +504,11 @@ Iterations: {consensus.iterations}/{consensus.max_iterations}
 Manual intervention required to complete the decision process."""
 
         # Add system participant if not exists
-        system_participants = [p for p in await self._get_conversation_participants(conversation_id) if p.role == "system"]
+        system_participants = [
+            p
+            for p in await self._get_conversation_participants(conversation_id)
+            if p.role == "system"
+        ]
         if system_participants:
             system_participant_id = system_participants[0].id
         else:
@@ -521,9 +527,13 @@ Manual intervention required to complete the decision process."""
             message_type="consensus_result",
         )
 
-        logger.info(f"Finalized consensus {consensus.id} with status: {consensus.status.value}")
+        logger.info(
+            f"Finalized consensus {consensus.id} with status: {consensus.status.value}"
+        )
 
-    async def _get_conversation_participants(self, conversation_id: str) -> List[ConversationParticipant]:
+    async def _get_conversation_participants(
+        self, conversation_id: str
+    ) -> List[ConversationParticipant]:
         """Get participants for a conversation."""
         conversation = self.database.get_conversation(conversation_id)
         return conversation.participants if conversation else []
@@ -532,7 +542,7 @@ Manual intervention required to complete the decision process."""
         self, conversation_id: str, consensus_id: str
     ) -> Dict[str, Any]:
         """Get the current status of a consensus process."""
-        
+
         # This is a simplified implementation
         # In a real implementation, you'd retrieve the consensus from storage
         consensus = self.consensus_engine.create_consensus_process(
@@ -542,7 +552,7 @@ Manual intervention required to complete the decision process."""
         consensus.id = consensus_id
 
         report = self.consensus_engine.generate_consensus_report(consensus)
-        
+
         return {
             "consensus_id": consensus_id,
             "conversation_id": conversation_id,
@@ -559,7 +569,7 @@ Manual intervention required to complete the decision process."""
         self, conversation_id: str, consensus_id: str
     ) -> Dict[str, Any]:
         """Attempt automatic resolution of consensus conflicts."""
-        
+
         # This is a simplified implementation
         consensus = self.consensus_engine.create_consensus_process(
             conversation_id=conversation_id,
@@ -569,10 +579,14 @@ Manual intervention required to complete the decision process."""
 
         # Attempt auto-resolution
         resolved = self.consensus_engine.auto_resolve_minor_conflicts(consensus)
-        
+
         if resolved:
             # Add message about auto-resolution
-            system_participants = [p for p in await self._get_conversation_participants(conversation_id) if p.role == "system"]
+            system_participants = [
+                p
+                for p in await self._get_conversation_participants(conversation_id)
+                if p.role == "system"
+            ]
             if system_participants:
                 await self.add_message(
                     conversation_id=conversation_id,

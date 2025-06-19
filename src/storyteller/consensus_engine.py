@@ -40,22 +40,18 @@ class ConsensusEngine:
             "lead-developer": 1.3,
             "product-owner": 1.4,
             "tech-lead": 1.3,
-            
             # Domain experts get contextual weight
             "domain-expert": 1.2,
             "security-expert": 1.2,
             "devops-engineer": 1.1,
             "qa-engineer": 1.1,
-            
             # Implementation roles get standard weight
             "backend-developer": 1.0,
             "frontend-developer": 1.0,
             "full-stack-developer": 1.0,
-            
             # Perspective roles get moderate weight
             "optimistic-developer": 0.9,
             "pessimistic-developer": 0.9,
-            
             # Standard weight for unlisted roles
             "default": 1.0,
         }
@@ -73,8 +69,10 @@ class ConsensusEngine:
         max_iterations: Optional[int] = None,
     ) -> ConsensusResult:
         """Create a new consensus process."""
-        
-        consensus_threshold = threshold or (self.config.auto_consensus_threshold / 100.0)
+
+        consensus_threshold = threshold or (
+            self.config.auto_consensus_threshold / 100.0
+        )
         max_iter = max_iterations or self.config.auto_consensus_max_iterations
 
         consensus = ConsensusResult(
@@ -89,7 +87,7 @@ class ConsensusEngine:
             f"Created consensus process {consensus.id} for conversation {conversation_id} "
             f"with threshold {consensus_threshold:.2f}"
         )
-        
+
         return consensus
 
     def add_role_vote(
@@ -104,12 +102,12 @@ class ConsensusEngine:
         suggestions: Optional[List[str]] = None,
     ) -> RoleVote:
         """Add a vote from a specific role to the consensus process."""
-        
+
         if not 0.0 <= confidence <= 1.0:
             raise ValueError("Confidence must be between 0.0 and 1.0")
 
         weight = self.get_role_weight(role_name)
-        
+
         vote = RoleVote(
             role_name=role_name,
             participant_id=participant_id,
@@ -122,11 +120,11 @@ class ConsensusEngine:
         )
 
         consensus.add_vote(vote)
-        
+
         logger.info(
             f"Added vote from {role_name} ({position.value}) to consensus {consensus.id}"
         )
-        
+
         return vote
 
     def calculate_weighted_consensus(self, consensus: ConsensusResult) -> float:
@@ -135,7 +133,7 @@ class ConsensusEngine:
 
     def check_consensus_status(self, consensus: ConsensusResult) -> ConsensusStatus:
         """Check the current status of the consensus process."""
-        
+
         # Check if max iterations reached
         if consensus.iterations >= consensus.max_iterations:
             consensus.status = ConsensusStatus.TIMEOUT
@@ -154,10 +152,11 @@ class ConsensusEngine:
 
         # Check for failure conditions
         strong_disagreements = [
-            v for v in consensus.votes 
+            v
+            for v in consensus.votes
             if v.position == VotingPosition.DISAGREE and v.confidence > 0.7
         ]
-        
+
         # If we have strong disagreements and low consensus score, mark as failed
         if strong_disagreements and consensus.achieved_score < 0.3:
             consensus.status = ConsensusStatus.FAILED
@@ -173,21 +172,20 @@ class ConsensusEngine:
     ) -> Tuple[bool, List[str], List[str]]:
         """
         Attempt to resolve conflicts in the consensus process.
-        
+
         Returns:
             - success: Whether conflicts were resolved
             - resolution_actions: Actions taken to resolve conflicts
             - remaining_concerns: Concerns that still need attention
         """
-        
+
         if consensus.status == ConsensusStatus.REACHED:
             return True, ["Consensus already reached"], []
 
         dissenting_votes = [
-            v for v in consensus.votes 
-            if v.position == VotingPosition.DISAGREE
+            v for v in consensus.votes if v.position == VotingPosition.DISAGREE
         ]
-        
+
         if not dissenting_votes:
             return True, ["No conflicts to resolve"], []
 
@@ -201,7 +199,7 @@ class ConsensusEngine:
 
         # Group similar concerns
         concern_groups = self._group_similar_concerns(all_concerns)
-        
+
         for concern_group in concern_groups:
             # Check if the concern is addressable
             if self._is_addressable_concern(concern_group):
@@ -211,10 +209,9 @@ class ConsensusEngine:
 
         # Check for role expertise conflicts
         high_expertise_disagreements = [
-            v for v in dissenting_votes 
-            if v.weight > 1.0 and v.confidence > 0.8
+            v for v in dissenting_votes if v.weight > 1.0 and v.confidence > 0.8
         ]
-        
+
         if high_expertise_disagreements:
             for vote in high_expertise_disagreements:
                 if vote.suggestions:
@@ -227,14 +224,14 @@ class ConsensusEngine:
             resolution_actions.append("Escalate to manual mediation")
 
         success = len(remaining_concerns) < len(all_concerns)
-        
+
         logger.info(
             f"Conflict resolution for consensus {consensus.id}: "
             f"{'success' if success else 'partial'}, "
             f"{len(resolution_actions)} actions, "
             f"{len(remaining_concerns)} remaining concerns"
         )
-        
+
         return success, resolution_actions, remaining_concerns
 
     def _group_similar_concerns(self, concerns: List[str]) -> List[List[str]]:
@@ -242,72 +239,94 @@ class ConsensusEngine:
         # Simple keyword-based grouping (could be enhanced with NLP)
         groups = []
         processed = set()
-        
+
         for concern in concerns:
             if concern in processed:
                 continue
-                
+
             current_group = [concern]
             processed.add(concern)
-            
+
             # Find similar concerns based on common keywords
             concern_words = set(concern.lower().split())
-            
+
             for other_concern in concerns:
                 if other_concern in processed:
                     continue
-                    
+
                 other_words = set(other_concern.lower().split())
-                
+
                 # If they share significant keywords, group them
                 common_words = concern_words.intersection(other_words)
                 if len(common_words) >= 2:  # At least 2 common words
                     current_group.append(other_concern)
                     processed.add(other_concern)
-            
+
             groups.append(current_group)
-        
+
         return groups
 
     def _is_addressable_concern(self, concern_group: List[str]) -> bool:
         """Determine if a concern group is addressable through process changes."""
         # Check for common addressable concern patterns
         addressable_keywords = [
-            "documentation", "testing", "review", "validation", 
-            "timeline", "resources", "communication", "process"
+            "documentation",
+            "testing",
+            "review",
+            "validation",
+            "timeline",
+            "resources",
+            "communication",
+            "process",
         ]
-        
+
         for concern in concern_group:
             concern_lower = concern.lower()
             if any(keyword in concern_lower for keyword in addressable_keywords):
                 return True
-        
+
         return False
 
     def generate_consensus_report(self, consensus: ConsensusResult) -> Dict[str, any]:
         """Generate a comprehensive consensus report."""
-        
+
         # Update rationale
         consensus.generate_decision_rationale()
-        
+
         # Calculate additional metrics
         total_votes = len(consensus.votes)
         weighted_score = consensus.calculate_consensus_score()
-        
+
         vote_distribution = {
-            "agree": len([v for v in consensus.votes if v.position == VotingPosition.AGREE]),
-            "disagree": len([v for v in consensus.votes if v.position == VotingPosition.DISAGREE]),
-            "abstain": len([v for v in consensus.votes if v.position == VotingPosition.ABSTAIN]),
-            "needs_clarification": len([v for v in consensus.votes if v.position == VotingPosition.NEEDS_CLARIFICATION]),
+            "agree": len(
+                [v for v in consensus.votes if v.position == VotingPosition.AGREE]
+            ),
+            "disagree": len(
+                [v for v in consensus.votes if v.position == VotingPosition.DISAGREE]
+            ),
+            "abstain": len(
+                [v for v in consensus.votes if v.position == VotingPosition.ABSTAIN]
+            ),
+            "needs_clarification": len(
+                [
+                    v
+                    for v in consensus.votes
+                    if v.position == VotingPosition.NEEDS_CLARIFICATION
+                ]
+            ),
         }
-        
+
         # Role participation analysis
         high_weight_roles = [v.role_name for v in consensus.votes if v.weight > 1.0]
-        missing_required_roles = set(consensus.required_roles) - set(consensus.participating_roles)
-        
+        missing_required_roles = set(consensus.required_roles) - set(
+            consensus.participating_roles
+        )
+
         # Conflict analysis
-        conflicts_resolved, resolution_actions, remaining_concerns = self.resolve_conflicts(consensus)
-        
+        conflicts_resolved, resolution_actions, remaining_concerns = (
+            self.resolve_conflicts(consensus)
+        )
+
         report = {
             "consensus_id": consensus.id,
             "conversation_id": consensus.conversation_id,
@@ -335,82 +354,94 @@ class ConsensusEngine:
             },
             "timestamps": {
                 "started_at": consensus.started_at.isoformat(),
-                "completed_at": consensus.completed_at.isoformat() if consensus.completed_at else None,
+                "completed_at": (
+                    consensus.completed_at.isoformat()
+                    if consensus.completed_at
+                    else None
+                ),
             },
         }
-        
+
         logger.info(f"Generated consensus report for {consensus.id}")
-        
+
         return report
 
     def iterate_consensus(self, consensus: ConsensusResult) -> bool:
         """
         Perform one iteration of the consensus process.
-        
+
         Returns True if consensus should continue, False if it should stop.
         """
-        
+
         consensus.iterations += 1
-        
+
         # Check if we've reached the maximum iterations
         if consensus.iterations >= consensus.max_iterations:
             consensus.status = ConsensusStatus.TIMEOUT
             consensus.completed_at = datetime.now(timezone.utc)
             return False
-        
+
         # Update status based on current votes
         status = self.check_consensus_status(consensus)
-        
+
         # Stop if consensus is reached or failed
-        if status in [ConsensusStatus.REACHED, ConsensusStatus.FAILED, ConsensusStatus.TIMEOUT]:
+        if status in [
+            ConsensusStatus.REACHED,
+            ConsensusStatus.FAILED,
+            ConsensusStatus.TIMEOUT,
+        ]:
             return False
-        
+
         return True
 
     def auto_resolve_minor_conflicts(self, consensus: ConsensusResult) -> bool:
         """
         Automatically resolve minor conflicts that don't require human intervention.
-        
+
         Returns True if any conflicts were resolved.
         """
-        
+
         resolved_any = False
-        
+
         # Handle "needs clarification" votes
         clarification_votes = [
-            v for v in consensus.votes 
+            v
+            for v in consensus.votes
             if v.position == VotingPosition.NEEDS_CLARIFICATION
         ]
-        
+
         for vote in clarification_votes:
             # If the role has provided suggestions, consider them addressed
             if vote.suggestions and len(vote.suggestions) > 0:
                 # Convert to abstain (neutral) since clarification was provided
                 vote.position = VotingPosition.ABSTAIN
-                vote.rationale += " [Auto-resolved: clarification provided via suggestions]"
+                vote.rationale += (
+                    " [Auto-resolved: clarification provided via suggestions]"
+                )
                 resolved_any = True
-                
+
                 logger.info(
                     f"Auto-resolved clarification request from {vote.role_name} "
                     f"in consensus {consensus.id}"
                 )
-        
+
         # Handle low-confidence disagreements
         weak_disagreements = [
-            v for v in consensus.votes 
+            v
+            for v in consensus.votes
             if v.position == VotingPosition.DISAGREE and v.confidence < 0.4
         ]
-        
+
         for vote in weak_disagreements:
             # Convert weak disagreements to abstain if no strong concerns
             if not vote.concerns or len(vote.concerns) == 0:
                 vote.position = VotingPosition.ABSTAIN
                 vote.rationale += " [Auto-resolved: low confidence disagreement without specific concerns]"
                 resolved_any = True
-                
+
                 logger.info(
                     f"Auto-resolved weak disagreement from {vote.role_name} "
                     f"in consensus {consensus.id}"
                 )
-        
+
         return resolved_any

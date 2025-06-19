@@ -1160,7 +1160,9 @@ class ConsensusResult:
             "required_roles": json.dumps(self.required_roles),
             "participating_roles": json.dumps(self.participating_roles),
             "started_at": self.started_at.isoformat(),
-            "completed_at": self.completed_at.isoformat() if self.completed_at else None,
+            "completed_at": (
+                self.completed_at.isoformat() if self.completed_at else None
+            ),
             "iterations": self.iterations,
             "max_iterations": self.max_iterations,
             "metadata": json.dumps(self.metadata),
@@ -1206,7 +1208,7 @@ class ConsensusResult:
         # Remove any existing vote from the same role
         self.votes = [v for v in self.votes if v.role_name != vote.role_name]
         self.votes.append(vote)
-        
+
         # Update participating roles
         if vote.role_name not in self.participating_roles:
             self.participating_roles.append(vote.role_name)
@@ -1228,7 +1230,7 @@ class ConsensusResult:
 
         for vote in self.votes:
             total_weight += vote.weight
-            
+
             if vote.position == VotingPosition.AGREE:
                 # Full weight for agreement, scaled by confidence
                 agreement_weight += vote.weight * vote.confidence
@@ -1248,7 +1250,7 @@ class ConsensusResult:
     def check_consensus_reached(self) -> bool:
         """Check if consensus has been reached based on threshold."""
         current_score = self.calculate_consensus_score()
-        
+
         # Check if all required roles have participated
         if self.required_roles:
             missing_roles = set(self.required_roles) - set(self.participating_roles)
@@ -1273,37 +1275,59 @@ class ConsensusResult:
 
         total_votes = len(self.votes)
         agree_votes = len([v for v in self.votes if v.position == VotingPosition.AGREE])
-        disagree_votes = len([v for v in self.votes if v.position == VotingPosition.DISAGREE])
-        abstain_votes = len([v for v in self.votes if v.position == VotingPosition.ABSTAIN])
-        clarification_votes = len([v for v in self.votes if v.position == VotingPosition.NEEDS_CLARIFICATION])
+        disagree_votes = len(
+            [v for v in self.votes if v.position == VotingPosition.DISAGREE]
+        )
+        abstain_votes = len(
+            [v for v in self.votes if v.position == VotingPosition.ABSTAIN]
+        )
+        clarification_votes = len(
+            [v for v in self.votes if v.position == VotingPosition.NEEDS_CLARIFICATION]
+        )
 
         score = self.calculate_consensus_score()
-        
+
         rationale_parts = [
             f"Consensus Score: {score:.2f} (threshold: {self.threshold:.2f})",
             f"Vote Distribution: {agree_votes} agree, {disagree_votes} disagree, {abstain_votes} abstain, {clarification_votes} need clarification",
-            f"Total Participating Roles: {total_votes}"
+            f"Total Participating Roles: {total_votes}",
         ]
 
         if self.required_roles:
             rationale_parts.append(f"Required Roles: {', '.join(self.required_roles)}")
             missing_roles = set(self.required_roles) - set(self.participating_roles)
             if missing_roles:
-                rationale_parts.append(f"Missing Required Roles: {', '.join(missing_roles)}")
+                rationale_parts.append(
+                    f"Missing Required Roles: {', '.join(missing_roles)}"
+                )
 
         # Add role-specific insights
-        high_weight_agreements = [v for v in self.votes if v.position == VotingPosition.AGREE and v.weight > 1.0]
+        high_weight_agreements = [
+            v
+            for v in self.votes
+            if v.position == VotingPosition.AGREE and v.weight > 1.0
+        ]
         if high_weight_agreements:
-            rationale_parts.append(f"Strong Agreement from: {', '.join([v.role_name for v in high_weight_agreements])}")
+            rationale_parts.append(
+                f"Strong Agreement from: {', '.join([v.role_name for v in high_weight_agreements])}"
+            )
 
-        strong_disagreements = [v for v in self.votes if v.position == VotingPosition.DISAGREE and v.confidence > 0.7]
+        strong_disagreements = [
+            v
+            for v in self.votes
+            if v.position == VotingPosition.DISAGREE and v.confidence > 0.7
+        ]
         if strong_disagreements:
-            rationale_parts.append(f"Strong Disagreement from: {', '.join([v.role_name for v in strong_disagreements])}")
+            rationale_parts.append(
+                f"Strong Disagreement from: {', '.join([v.role_name for v in strong_disagreements])}"
+            )
 
         # Add dissenting concerns if any
         concerns = self.get_dissenting_concerns()
         if concerns:
-            rationale_parts.append(f"Key Concerns Raised: {'; '.join(concerns[:3])}")  # Limit to top 3
+            rationale_parts.append(
+                f"Key Concerns Raised: {'; '.join(concerns[:3])}"
+            )  # Limit to top 3
 
         self.rationale = "\n".join(rationale_parts)
         return self.rationale

@@ -1,15 +1,16 @@
 """Integration tests for consensus functionality with conversation manager."""
 
-import pytest
-from unittest.mock import Mock, patch, AsyncMock
 import os
+from unittest.mock import AsyncMock, Mock, patch
+
+import pytest
 
 # Set up environment for testing
 os.environ["GITHUB_TOKEN"] = "test_token"
 os.environ["DEFAULT_LLM_PROVIDER"] = "github"
 
-from src.storyteller.conversation_manager import ConversationManager
-from src.storyteller.models import VotingPosition
+from conversation_manager import ConversationManager
+from models import VotingPosition
 
 
 class TestConversationManagerConsensusIntegration:
@@ -18,19 +19,21 @@ class TestConversationManagerConsensusIntegration:
     def setup_method(self):
         """Set up test fixtures."""
         # Mock the database and context reader to avoid actual I/O
-        with patch('src.storyteller.conversation_manager.DatabaseManager'), \
-             patch('src.storyteller.conversation_manager.MultiRepositoryContextReader'):
+        with (
+            patch("conversation_manager.DatabaseManager"),
+            patch("conversation_manager.MultiRepositoryContextReader"),
+        ):
             self.manager = ConversationManager()
 
     @pytest.mark.asyncio
     async def test_initiate_consensus_process(self):
         """Test initiating a consensus process through conversation manager."""
-        
+
         # Mock conversation exists
         mock_conversation = Mock()
         mock_conversation.participants = []
         self.manager.database.get_conversation = Mock(return_value=mock_conversation)
-        
+
         # Mock add_message to avoid database calls
         self.manager.add_message = AsyncMock()
 
@@ -43,7 +46,7 @@ class TestConversationManagerConsensusIntegration:
 
         assert consensus_id is not None
         assert consensus_id.startswith("consensus_")
-        
+
         # Verify system message was added
         self.manager.add_message.assert_called_once()
         call_args = self.manager.add_message.call_args
@@ -53,7 +56,7 @@ class TestConversationManagerConsensusIntegration:
     @pytest.mark.asyncio
     async def test_submit_consensus_vote(self):
         """Test submitting a vote through conversation manager."""
-        
+
         # Mock add_message to avoid database calls
         self.manager.add_message = AsyncMock()
 
@@ -70,10 +73,10 @@ class TestConversationManagerConsensusIntegration:
         )
 
         assert result is True
-        
+
         # Verify vote message was added (and possibly consensus finalization)
         assert self.manager.add_message.call_count >= 1
-        
+
         # Check that at least one call was for the vote
         vote_call_found = False
         for call in self.manager.add_message.call_args_list:
@@ -88,13 +91,13 @@ class TestConversationManagerConsensusIntegration:
     @pytest.mark.asyncio
     async def test_consensus_workflow_complete(self):
         """Test a complete consensus workflow from initiation to completion."""
-        
+
         # Mock conversation and database operations
         mock_conversation = Mock()
         mock_conversation.participants = []
         self.manager.database.get_conversation = Mock(return_value=mock_conversation)
         self.manager.add_message = AsyncMock()
-        
+
         # Step 1: Initiate consensus
         consensus_id = await self.manager.initiate_consensus(
             conversation_id="conv_123",
@@ -130,7 +133,7 @@ class TestConversationManagerConsensusIntegration:
     @pytest.mark.asyncio
     async def test_consensus_with_disagreement(self):
         """Test consensus process with disagreement."""
-        
+
         mock_conversation = Mock()
         mock_conversation.participants = []
         self.manager.database.get_conversation = Mock(return_value=mock_conversation)
@@ -160,7 +163,7 @@ class TestConversationManagerConsensusIntegration:
             if call[1]["message_type"] == "consensus_vote":
                 vote_call = call
                 break
-        
+
         assert vote_call is not None
         content = vote_call[1]["content"]
         assert "Position: Disagree" in content
@@ -170,7 +173,7 @@ class TestConversationManagerConsensusIntegration:
     @pytest.mark.asyncio
     async def test_get_consensus_status(self):
         """Test getting consensus status."""
-        
+
         status = await self.manager.get_consensus_status(
             conversation_id="conv_123",
             consensus_id="consensus_456",
@@ -185,7 +188,7 @@ class TestConversationManagerConsensusIntegration:
     @pytest.mark.asyncio
     async def test_auto_resolve_conflicts(self):
         """Test automatic conflict resolution."""
-        
+
         mock_conversation = Mock()
         mock_conversation.participants = [Mock(role="system", id="system_1")]
         self.manager.database.get_conversation = Mock(return_value=mock_conversation)
@@ -203,7 +206,7 @@ class TestConversationManagerConsensusIntegration:
     @pytest.mark.asyncio
     async def test_invalid_voting_position(self):
         """Test error handling for invalid voting positions."""
-        
+
         with pytest.raises(ValueError, match="Invalid voting position"):
             await self.manager.submit_consensus_vote(
                 conversation_id="conv_123",
@@ -217,7 +220,7 @@ class TestConversationManagerConsensusIntegration:
     @pytest.mark.asyncio
     async def test_invalid_confidence_level(self):
         """Test error handling for invalid confidence levels."""
-        
+
         with pytest.raises(ValueError, match="Confidence must be between 0.0 and 1.0"):
             await self.manager.submit_consensus_vote(
                 conversation_id="conv_123",
@@ -230,11 +233,11 @@ class TestConversationManagerConsensusIntegration:
 
     def test_consensus_engine_integration(self):
         """Test that ConversationManager properly integrates ConsensusEngine."""
-        
+
         # Verify consensus engine is initialized
-        assert hasattr(self.manager, 'consensus_engine')
+        assert hasattr(self.manager, "consensus_engine")
         assert self.manager.consensus_engine is not None
-        
+
         # Verify it has the expected role weights
         assert self.manager.consensus_engine.get_role_weight("system-architect") == 1.5
         assert self.manager.consensus_engine.get_role_weight("lead-developer") == 1.3
@@ -242,17 +245,17 @@ class TestConversationManagerConsensusIntegration:
 
     def test_consensus_configuration_integration(self):
         """Test that consensus engine uses configuration from ConversationManager."""
-        
+
         # Verify the consensus engine uses the same config
         assert self.manager.consensus_engine.config == self.manager.config
-        
+
         # Test that auto_consensus settings are properly passed
-        if hasattr(self.manager.config, 'auto_consensus_threshold'):
+        if hasattr(self.manager.config, "auto_consensus_threshold"):
             expected_threshold = self.manager.config.auto_consensus_threshold / 100.0
-            
+
             consensus = self.manager.consensus_engine.create_consensus_process(
                 conversation_id="test",
                 decision_topic="test",
             )
-            
+
             assert consensus.threshold == expected_threshold

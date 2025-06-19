@@ -193,3 +193,4 @@ cython_debug/
 .cursorignore
 .cursorindexingignore
 demo_assignment.py
+demo_workload_management.py

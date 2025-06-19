@@ -330,8 +330,6 @@ class ConversationManager:
         logger.info(f"Archived conversation: {conversation_id}")
         return True
 
-        }
-
     async def start_discussion(
         self,
         topic: str,

@@ -4,10 +4,9 @@ import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-
-from src.storyteller.config import Config
-from src.storyteller.discussion_engine import DiscussionEngine
-from src.storyteller.models import (
+from config import Config
+from discussion_engine import DiscussionEngine
+from models import (
     ConversationParticipant,
     DiscussionSummary,
     DiscussionThread,
@@ -21,6 +20,14 @@ def mock_config():
     config = MagicMock(spec=Config)
     config.auto_consensus_threshold = 70
     config.max_retries = 3
+    config.github_token = "test_token"
+    config.github_repository = "test/repo"
+    config.default_llm_provider = "github"
+    config.openai_api_key = None
+    config.ollama_api_host = "http://localhost:11434"
+    config.log_level = "INFO"
+    config.timeout_seconds = 30
+    config.auto_consensus_enabled = True
     return config
 
 
@@ -50,10 +57,10 @@ def mock_role_engine():
 def discussion_engine(mock_config, mock_database, mock_llm_handler, mock_role_engine):
     """Create a discussion engine with mocked dependencies."""
     with (
-        patch("src.storyteller.discussion_engine.DatabaseManager") as mock_db,
-        patch("src.storyteller.discussion_engine.LLMHandler") as mock_llm,
-        patch("src.storyteller.discussion_engine.RoleAssignmentEngine") as mock_role,
-        patch("src.storyteller.discussion_engine.MultiRepositoryContextReader"),
+        patch("discussion_engine.DatabaseManager") as mock_db,
+        patch("discussion_engine.LLMHandler") as mock_llm,
+        patch("discussion_engine.RoleAssignmentEngine") as mock_role,
+        patch("discussion_engine.MultiRepositoryContextReader"),
     ):
 
         mock_db.return_value = mock_database

@@ -605,3 +605,166 @@ Manual intervention required to complete the decision process."""
             "new_status": status.value,
             "current_score": consensus.calculate_consensus_score(),
         }
+
+    async def trigger_manual_intervention(
+        self,
+        conversation_id: str,
+        consensus_id: str,
+        trigger_reason: str = "manual_request",
+        intervention_type: str = "decision",
+        metadata: Optional[Dict[str, Any]] = None,
+    ) -> str:
+        """Trigger a manual intervention for a consensus process."""
+        
+        conversation = self.database.get_conversation(conversation_id)
+        if not conversation:
+            raise ValueError(f"Conversation {conversation_id} not found")
+
+        # Create consensus object for intervention
+        consensus = self.consensus_engine.create_consensus_process(
+            conversation_id=conversation_id,
+            decision_topic="Retrieved from storage",
+        )
+        consensus.id = consensus_id
+
+        # Trigger intervention
+        intervention_id = self.consensus_engine.trigger_manual_intervention(
+            consensus=consensus,
+            conversation_id=conversation_id,
+            trigger_reason=trigger_reason,
+            intervention_type=intervention_type,
+            metadata=metadata,
+        )
+
+        # Add system message about intervention
+        system_participants = [
+            p for p in conversation.participants if p.role == "system"
+        ]
+        if system_participants:
+            await self.add_message(
+                conversation_id=conversation_id,
+                participant_id=system_participants[0].id,
+                content=f"**Manual Intervention Triggered**\n\nIntervention ID: {intervention_id}\nReason: {trigger_reason}\nType: {intervention_type}\n\nA human decision maker will review this consensus process.",
+                message_type="intervention",
+            )
+
+        logger.info(
+            f"Triggered manual intervention {intervention_id} for conversation {conversation_id}"
+        )
+
+        return intervention_id
+
+    async def resolve_manual_intervention(
+        self,
+        intervention_id: str,
+        human_decision: str,
+        human_rationale: str,
+        intervener_id: str,
+        intervener_role: str = "project-manager",
+        override_data: Optional[Dict[str, Any]] = None,
+    ) -> bool:
+        """Resolve a manual intervention with human decision."""
+        
+        # Get intervention details
+        intervention = self.database.get_manual_intervention(intervention_id)
+        if not intervention:
+            raise ValueError(f"Manual intervention {intervention_id} not found")
+
+        # Resolve the intervention
+        success = self.consensus_engine.resolve_manual_intervention(
+            intervention_id=intervention_id,
+            human_decision=human_decision,
+            human_rationale=human_rationale,
+            intervener_id=intervener_id,
+            intervener_role=intervener_role,
+            override_data=override_data,
+        )
+
+        if success:
+            # Add system message about resolution
+            conversation = self.database.get_conversation(intervention.conversation_id)
+            if conversation:
+                system_participants = [
+                    p for p in conversation.participants if p.role == "system"
+                ]
+                if system_participants:
+                    await self.add_message(
+                        conversation_id=intervention.conversation_id,
+                        participant_id=system_participants[0].id,
+                        content=f"**Manual Intervention Resolved**\n\nIntervention ID: {intervention_id}\nDecision: {human_decision}\nRationale: {human_rationale}\nResolved by: {intervener_role}\n\nThis decision overrides the automated consensus process.",
+                        message_type="intervention_resolution",
+                    )
+
+            logger.info(
+                f"Resolved manual intervention {intervention_id} in conversation {intervention.conversation_id}"
+            )
+
+        return success
+
+    async def check_and_trigger_intervention_if_needed(
+        self, conversation_id: str, consensus_id: str
+    ) -> Optional[str]:
+        """Check if consensus requires intervention and trigger if needed."""
+        
+        # Create consensus object for checking
+        consensus = self.consensus_engine.create_consensus_process(
+            conversation_id=conversation_id,
+            decision_topic="Retrieved from storage",
+        )
+        consensus.id = consensus_id
+
+        # Check if intervention is needed
+        requires_intervention, reason = self.consensus_engine.check_consensus_requires_intervention(consensus)
+        
+        if requires_intervention:
+            return await self.trigger_manual_intervention(
+                conversation_id=conversation_id,
+                consensus_id=consensus_id,
+                trigger_reason=reason,
+                intervention_type="decision",
+            )
+        
+        return None
+
+    def get_pending_interventions(self, limit: int = 50) -> List[Dict[str, Any]]:
+        """Get pending manual interventions."""
+        interventions = self.database.get_pending_interventions(limit)
+        return [
+            {
+                "id": intervention.id,
+                "conversation_id": intervention.conversation_id,
+                "consensus_id": intervention.consensus_id,
+                "trigger_reason": intervention.trigger_reason,
+                "intervention_type": intervention.intervention_type,
+                "original_decision": intervention.original_decision,
+                "triggered_at": intervention.triggered_at.isoformat(),
+                "affected_roles": intervention.affected_roles,
+                "metadata": intervention.metadata,
+            }
+            for intervention in interventions
+        ]
+
+    def get_intervention_status(self, intervention_id: str) -> Optional[Dict[str, Any]]:
+        """Get the status of a manual intervention."""
+        intervention = self.database.get_manual_intervention(intervention_id)
+        if not intervention:
+            return None
+
+        return {
+            "id": intervention.id,
+            "conversation_id": intervention.conversation_id,
+            "consensus_id": intervention.consensus_id,
+            "status": intervention.status,
+            "trigger_reason": intervention.trigger_reason,
+            "intervention_type": intervention.intervention_type,
+            "original_decision": intervention.original_decision,
+            "human_decision": intervention.human_decision,
+            "human_rationale": intervention.human_rationale,
+            "intervener_id": intervention.intervener_id,
+            "intervener_role": intervention.intervener_role,
+            "triggered_at": intervention.triggered_at.isoformat(),
+            "resolved_at": intervention.resolved_at.isoformat() if intervention.resolved_at else None,
+            "affected_roles": intervention.affected_roles,
+            "audit_trail": intervention.audit_trail,
+            "metadata": intervention.metadata,
+        }

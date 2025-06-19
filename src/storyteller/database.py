@@ -364,6 +364,31 @@ class DatabaseManager:
         """
         )
 
+        # Manual interventions table for tracking human consensus interventions
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS manual_interventions (
+                id TEXT PRIMARY KEY,
+                conversation_id TEXT NOT NULL,
+                consensus_id TEXT NOT NULL,
+                trigger_reason TEXT NOT NULL CHECK (trigger_reason IN ('timeout', 'failed_consensus', 'manual_request')),
+                intervention_type TEXT NOT NULL CHECK (intervention_type IN ('decision', 'override', 'escalation')),
+                original_decision TEXT NOT NULL,
+                human_decision TEXT DEFAULT '',
+                human_rationale TEXT DEFAULT '',
+                intervener_id TEXT DEFAULT '',
+                intervener_role TEXT DEFAULT '',
+                triggered_at TEXT NOT NULL,
+                resolved_at TEXT,
+                status TEXT NOT NULL CHECK (status IN ('pending', 'in_progress', 'resolved', 'cancelled')),
+                affected_roles TEXT DEFAULT '[]',
+                override_data TEXT DEFAULT '{}',
+                audit_trail TEXT DEFAULT '[]',
+                metadata TEXT DEFAULT '{}'
+            )
+        """
+        )
+
         # Workflow checkpoints table for state persistence
         conn.execute(
             """
@@ -450,6 +475,20 @@ class DatabaseManager:
         )
         conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_escalation_records_resolved ON escalation_records (resolved)"
+        )
+
+        # Create indexes for manual interventions
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_manual_interventions_conversation_id ON manual_interventions (conversation_id)"
+        )
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_manual_interventions_consensus_id ON manual_interventions (consensus_id)"
+        )
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_manual_interventions_triggered_at ON manual_interventions (triggered_at)"
+        )
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_manual_interventions_status ON manual_interventions (status)"
         )
 
         # Create indexes for workflow checkpoints
@@ -1736,6 +1775,94 @@ class DatabaseManager:
 
             return escalations
 
+    def store_manual_intervention(self, intervention) -> bool:
+        """Store a manual intervention record in the database."""
+        with self.get_connection() as conn:
+            try:
+                data = intervention.to_dict()
+                columns = ", ".join(data.keys())
+                placeholders = ", ".join(["?" for _ in data])
+
+                conn.execute(
+                    f"INSERT OR REPLACE INTO manual_interventions ({columns}) VALUES ({placeholders})",
+                    list(data.values()),
+                )
+                return True
+            except Exception as e:
+                logger.error(f"Failed to store manual intervention: {e}")
+                return False
+
+    def get_manual_intervention(self, intervention_id: str):
+        """Get a manual intervention by ID."""
+        try:
+            from .models import ManualIntervention
+        except ImportError:
+            from models import ManualIntervention
+
+        with self.get_connection() as conn:
+            cursor = conn.execute(
+                "SELECT * FROM manual_interventions WHERE id = ?", (intervention_id,)
+            )
+            row = cursor.fetchone()
+            if row:
+                return ManualIntervention.from_dict(dict(row))
+            return None
+
+    def get_interventions_by_conversation(
+        self, conversation_id: str, status: Optional[str] = None
+    ) -> List:
+        """Get manual interventions for a conversation."""
+        try:
+            from .models import ManualIntervention
+        except ImportError:
+            from models import ManualIntervention
+
+        with self.get_connection() as conn:
+            query = "SELECT * FROM manual_interventions WHERE conversation_id = ?"
+            params = [conversation_id]
+
+            if status:
+                query += " AND status = ?"
+                params.append(status)
+
+            query += " ORDER BY triggered_at DESC"
+
+            cursor = conn.execute(query, params)
+            interventions = []
+
+            for row in cursor.fetchall():
+                row_dict = dict(row)
+                intervention = ManualIntervention.from_dict(row_dict)
+                interventions.append(intervention)
+
+            return interventions
+
+    def get_pending_interventions(self, limit: int = 50) -> List:
+        """Get pending manual interventions across all conversations."""
+        try:
+            from .models import ManualIntervention
+        except ImportError:
+            from models import ManualIntervention
+
+        with self.get_connection() as conn:
+            cursor = conn.execute(
+                """
+                SELECT * FROM manual_interventions 
+                WHERE status = 'pending' 
+                ORDER BY triggered_at ASC 
+                LIMIT ?
+                """,
+                (limit,),
+            )
+            interventions = []
+
+            for row in cursor.fetchall():
+                row_dict = dict(row)
+                intervention = ManualIntervention.from_dict(row_dict)
+                interventions.append(intervention)
+
+            return interventions
+
     def count_recent_failures_by_pattern(
         self, repository: str, failure_pattern: str, hours: int = 24
     ) -> int:
@@ -1933,6 +2060,7 @@ def run_migrations(db_path: str = "storyteller.db"):
             "failure_patterns",
             "retry_attempts",
             "escalation_records",
+            "manual_interventions",
             "workflow_checkpoints",
             "recovery_states",
         ]

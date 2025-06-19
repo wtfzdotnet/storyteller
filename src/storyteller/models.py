@@ -924,6 +924,100 @@ class EscalationRecord:
 
 
 @dataclass
+class ManualIntervention:
+    """Represents a manual intervention in a consensus process."""
+
+    id: str = field(default_factory=lambda: f"intervention_{uuid.uuid4().hex[:8]}")
+    conversation_id: str = ""
+    consensus_id: str = ""
+    trigger_reason: str = ""  # timeout, failed_consensus, manual_request
+    intervention_type: str = "decision"  # decision, override, escalation
+    original_decision: str = ""
+    human_decision: str = ""
+    human_rationale: str = ""
+    intervener_id: str = ""  # ID of the human who intervened
+    intervener_role: str = ""  # role of the intervener (e.g., "project-manager")
+    triggered_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    resolved_at: Optional[datetime] = None
+    status: str = "pending"  # pending, in_progress, resolved, cancelled
+    affected_roles: List[str] = field(default_factory=list)
+    override_data: Dict[str, Any] = field(default_factory=dict)
+    audit_trail: List[Dict[str, Any]] = field(default_factory=list)
+    metadata: Dict[str, Any] = field(default_factory=dict)
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to dictionary for storage."""
+        return {
+            "id": self.id,
+            "conversation_id": self.conversation_id,
+            "consensus_id": self.consensus_id,
+            "trigger_reason": self.trigger_reason,
+            "intervention_type": self.intervention_type,
+            "original_decision": self.original_decision,
+            "human_decision": self.human_decision,
+            "human_rationale": self.human_rationale,
+            "intervener_id": self.intervener_id,
+            "intervener_role": self.intervener_role,
+            "triggered_at": self.triggered_at.isoformat(),
+            "resolved_at": self.resolved_at.isoformat() if self.resolved_at else None,
+            "status": self.status,
+            "affected_roles": json.dumps(self.affected_roles),
+            "override_data": json.dumps(self.override_data),
+            "audit_trail": json.dumps(self.audit_trail),
+            "metadata": json.dumps(self.metadata),
+        }
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "ManualIntervention":
+        """Create from dictionary."""
+        return cls(
+            id=data["id"],
+            conversation_id=data["conversation_id"],
+            consensus_id=data["consensus_id"],
+            trigger_reason=data["trigger_reason"],
+            intervention_type=data["intervention_type"],
+            original_decision=data["original_decision"],
+            human_decision=data["human_decision"],
+            human_rationale=data["human_rationale"],
+            intervener_id=data["intervener_id"],
+            intervener_role=data["intervener_role"],
+            triggered_at=datetime.fromisoformat(data["triggered_at"]),
+            resolved_at=(
+                datetime.fromisoformat(data["resolved_at"])
+                if data["resolved_at"]
+                else None
+            ),
+            status=data["status"],
+            affected_roles=(
+                json.loads(data["affected_roles"])
+                if data["affected_roles"]
+                else []
+            ),
+            override_data=(
+                json.loads(data["override_data"])
+                if data["override_data"]
+                else {}
+            ),
+            audit_trail=(
+                json.loads(data["audit_trail"])
+                if data["audit_trail"]
+                else []
+            ),
+            metadata=json.loads(data["metadata"]) if data["metadata"] else {},
+        )
+
+    def add_audit_entry(self, action: str, details: str, actor: str = "") -> None:
+        """Add an entry to the audit trail."""
+        entry = {
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "action": action,
+            "details": details,
+            "actor": actor,
+        }
+        self.audit_trail.append(entry)
+
+
+@dataclass
 class WorkflowCheckpoint:
     """Represents a workflow state checkpoint for recovery purposes."""
 

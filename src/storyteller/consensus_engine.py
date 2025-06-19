@@ -2,7 +2,7 @@
 
 import logging
 from datetime import datetime, timezone
-from typing import Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 try:
     from .config import Config, get_config
@@ -445,3 +445,148 @@ class ConsensusEngine:
                 )
 
         return resolved_any
+
+    def trigger_manual_intervention(
+        self,
+        consensus: ConsensusResult,
+        conversation_id: str,
+        trigger_reason: str = "failed_consensus",
+        intervention_type: str = "decision",
+        metadata: Optional[Dict[str, Any]] = None,
+    ) -> str:
+        """
+        Trigger a manual intervention for a consensus process.
+        
+        Returns the intervention ID.
+        """
+        try:
+            from .models import ManualIntervention
+            from .database import DatabaseManager
+        except ImportError:
+            from models import ManualIntervention
+            from database import DatabaseManager
+
+        # Create manual intervention record
+        intervention = ManualIntervention(
+            conversation_id=conversation_id,
+            consensus_id=consensus.id,
+            trigger_reason=trigger_reason,
+            intervention_type=intervention_type,
+            original_decision=consensus.decision,
+            affected_roles=consensus.participating_roles,
+            metadata=metadata or {},
+        )
+
+        # Add initial audit entry
+        intervention.add_audit_entry(
+            action="intervention_triggered",
+            details=f"Manual intervention triggered due to {trigger_reason}",
+            actor="system",
+        )
+
+        # Store in database
+        db = DatabaseManager()
+        if db.store_manual_intervention(intervention):
+            logger.info(
+                f"Triggered manual intervention {intervention.id} for consensus {consensus.id}"
+            )
+            return intervention.id
+        else:
+            logger.error(
+                f"Failed to store manual intervention for consensus {consensus.id}"
+            )
+            raise RuntimeError("Failed to store manual intervention")
+
+    def resolve_manual_intervention(
+        self,
+        intervention_id: str,
+        human_decision: str,
+        human_rationale: str,
+        intervener_id: str,
+        intervener_role: str = "project-manager",
+        override_data: Optional[Dict[str, Any]] = None,
+    ) -> bool:
+        """
+        Resolve a manual intervention with human decision.
+        
+        Returns True if successful.
+        """
+        try:
+            from .database import DatabaseManager
+        except ImportError:
+            from database import DatabaseManager
+
+        db = DatabaseManager()
+        intervention = db.get_manual_intervention(intervention_id)
+        
+        if not intervention:
+            logger.error(f"Manual intervention {intervention_id} not found")
+            return False
+
+        if intervention.status != "pending":
+            logger.error(f"Manual intervention {intervention_id} is not pending")
+            return False
+
+        # Update intervention with human decision
+        intervention.human_decision = human_decision
+        intervention.human_rationale = human_rationale
+        intervention.intervener_id = intervener_id
+        intervention.intervener_role = intervener_role
+        intervention.status = "resolved"
+        intervention.resolved_at = datetime.now(timezone.utc)
+        
+        if override_data:
+            intervention.override_data = override_data
+
+        # Add audit entry
+        intervention.add_audit_entry(
+            action="intervention_resolved",
+            details=f"Manual intervention resolved with decision: {human_decision}",
+            actor=f"{intervener_role}:{intervener_id}",
+        )
+
+        # Store updated intervention
+        if db.store_manual_intervention(intervention):
+            logger.info(
+                f"Resolved manual intervention {intervention_id} with decision: {human_decision}"
+            )
+            return True
+        else:
+            logger.error(f"Failed to update manual intervention {intervention_id}")
+            return False
+
+    def check_consensus_requires_intervention(
+        self, consensus: ConsensusResult
+    ) -> Tuple[bool, str]:
+        """
+        Check if a consensus process requires manual intervention.
+        
+        Returns (requires_intervention, reason).
+        """
+        
+        # Check for timeout
+        if consensus.status == ConsensusStatus.TIMEOUT:
+            return True, "timeout"
+        
+        # Check for failed consensus
+        if consensus.status == ConsensusStatus.FAILED:
+            return True, "failed_consensus"
+        
+        # Check for high-confidence disagreements from key roles
+        high_weight_disagreements = [
+            v for v in consensus.votes
+            if v.position == VotingPosition.DISAGREE 
+            and v.weight > 1.0 
+            and v.confidence > 0.8
+        ]
+        
+        if len(high_weight_disagreements) > 1:
+            return True, "high_expertise_conflict"
+        
+        # Check for stalled progress (low consensus score after multiple iterations)
+        if (consensus.iterations > 2 
+            and consensus.achieved_score < 0.4 
+            and consensus.status == ConsensusStatus.IN_PROGRESS):
+            return True, "stalled_progress"
+        
+        return False, ""

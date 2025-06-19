@@ -7,22 +7,36 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
 
-from models import (
-    Conversation,
-    ConversationParticipant,
-    Epic,
-    FailureCategory,
-    FailurePattern,
-    FailureSeverity,
-    Message,
-    PipelineFailure,
-    PipelineRun,
-    StoryHierarchy,
-    StoryStatus,
-    StoryType,
-    SubStory,
-    UserStory,
-)
+try:
+    # Try relative imports first (for package usage)
+    from .models import (
+        Conversation,
+        ConversationParticipant,
+        Epic,
+        Message,
+        RecoveryState,
+        StoryHierarchy,
+        StoryStatus,
+        StoryType,
+        SubStory,
+        UserStory,
+        WorkflowCheckpoint,
+    )
+except ImportError:
+    # Fall back to absolute imports (for direct execution)
+    from models import (
+        Conversation,
+        ConversationParticipant,
+        Epic,
+        Message,
+        RecoveryState,
+        StoryHierarchy,
+        StoryStatus,
+        StoryType,
+        SubStory,
+        UserStory,
+        WorkflowCheckpoint,
+    )
 
 logger = logging.getLogger(__name__)
 
@@ -350,6 +364,54 @@ class DatabaseManager:
         """
         )
 
+        # Workflow checkpoints table for state persistence
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS workflow_checkpoints (
+                id TEXT PRIMARY KEY,
+                repository TEXT NOT NULL,
+                workflow_name TEXT NOT NULL,
+                run_id TEXT NOT NULL,
+                commit_sha TEXT NOT NULL,
+                checkpoint_type TEXT NOT NULL CHECK (checkpoint_type IN ('step', 'job', 'workflow')),
+                checkpoint_name TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                workflow_state TEXT DEFAULT '{}',
+                environment_context TEXT DEFAULT '{}',
+                dependencies TEXT DEFAULT '[]',
+                artifacts TEXT DEFAULT '[]',
+                metadata TEXT DEFAULT '{}'
+            )
+        """
+        )
+
+        # Recovery states table for tracking recovery operations
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS recovery_states (
+                id TEXT PRIMARY KEY,
+                failure_id TEXT NOT NULL,
+                repository TEXT NOT NULL,
+                recovery_type TEXT NOT NULL CHECK (recovery_type IN ('retry', 'resume', 'rollback')),
+                status TEXT NOT NULL CHECK (status IN ('pending', 'in_progress', 'completed', 'failed', 'cancelled')),
+                target_checkpoint_id TEXT,
+                recovery_plan TEXT DEFAULT '[]',
+                started_at TEXT NOT NULL,
+                completed_at TEXT,
+                progress_steps TEXT DEFAULT '[]',
+                recovery_context TEXT DEFAULT '{}',
+                rollback_checkpoint_id TEXT,
+                corruption_detected BOOLEAN DEFAULT FALSE,
+                validation_results TEXT DEFAULT '{}',
+                metadata TEXT DEFAULT '{}',
+
+                FOREIGN KEY (failure_id) REFERENCES pipeline_failures (id) ON DELETE CASCADE,
+                FOREIGN KEY (target_checkpoint_id) REFERENCES workflow_checkpoints (id) ON DELETE SET NULL,
+                FOREIGN KEY (rollback_checkpoint_id) REFERENCES workflow_checkpoints (id) ON DELETE SET NULL
+            )
+        """
+        )
+
         # Create indexes for pipeline monitoring
         conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_pipeline_runs_repository ON pipeline_runs (repository)"
@@ -388,6 +450,34 @@ class DatabaseManager:
         )
         conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_escalation_records_resolved ON escalation_records (resolved)"
+        )
+
+        # Create indexes for workflow checkpoints
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_workflow_checkpoints_repository ON workflow_checkpoints (repository)"
+        )
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_workflow_checkpoints_run_id ON workflow_checkpoints (run_id)"
+        )
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_workflow_checkpoints_created_at ON workflow_checkpoints (created_at)"
+        )
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_workflow_checkpoints_type ON workflow_checkpoints (checkpoint_type)"
+        )
+
+        # Create indexes for recovery states
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_recovery_states_failure_id ON recovery_states (failure_id)"
+        )
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_recovery_states_repository ON recovery_states (repository)"
+        )
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_recovery_states_status ON recovery_states (status)"
+        )
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_recovery_states_started_at ON recovery_states (started_at)"
         )
 
     def save_story(self, story: Union[Epic, UserStory, SubStory]) -> str:
@@ -1664,6 +1754,160 @@ class DatabaseManager:
             )
             return cursor.fetchone()[0]
 
+    def store_workflow_checkpoint(self, checkpoint) -> bool:
+        """Store a workflow checkpoint in the database."""
+        with self.get_connection() as conn:
+            try:
+                data = checkpoint.to_dict()
+                columns = ", ".join(data.keys())
+                placeholders = ", ".join(["?" for _ in data])
+
+                conn.execute(
+                    f"INSERT OR REPLACE INTO workflow_checkpoints ({columns}) VALUES ({placeholders})",
+                    list(data.values()),
+                )
+                return True
+            except Exception as e:
+                logger.error(f"Failed to store workflow checkpoint: {e}")
+                return False
+
+    def get_workflow_checkpoints(
+        self,
+        repository: Optional[str] = None,
+        run_id: Optional[str] = None,
+        limit: int = 100,
+    ) -> List:
+        """Get workflow checkpoints from the database."""
+        with self.get_connection() as conn:
+            query = "SELECT * FROM workflow_checkpoints WHERE 1=1"
+            params = []
+
+            if repository:
+                query += " AND repository = ?"
+                params.append(repository)
+
+            if run_id:
+                query += " AND run_id = ?"
+                params.append(run_id)
+
+            query += " ORDER BY created_at DESC LIMIT ?"
+            params.append(limit)
+
+            cursor = conn.execute(query, params)
+            checkpoints = []
+
+            for row in cursor.fetchall():
+                row_dict = dict(row)
+                checkpoint = WorkflowCheckpoint.from_dict(row_dict)
+                checkpoints.append(checkpoint)
+
+            return checkpoints
+
+    def get_latest_checkpoint(
+        self, repository: str, workflow_name: str, checkpoint_type: Optional[str] = None
+    ) -> Optional:
+        """Get the latest checkpoint for a repository and workflow."""
+        with self.get_connection() as conn:
+            query = """
+                SELECT * FROM workflow_checkpoints 
+                WHERE repository = ? AND workflow_name = ?
+            """
+            params = [repository, workflow_name]
+
+            if checkpoint_type:
+                query += " AND checkpoint_type = ?"
+                params.append(checkpoint_type)
+
+            query += " ORDER BY created_at DESC LIMIT 1"
+
+            cursor = conn.execute(query, params)
+            row = cursor.fetchone()
+
+            if row:
+                row_dict = dict(row)
+                return WorkflowCheckpoint.from_dict(row_dict)
+
+            return None
+
+    def store_recovery_state(self, recovery_state) -> bool:
+        """Store a recovery state in the database."""
+        with self.get_connection() as conn:
+            try:
+                data = recovery_state.to_dict()
+                columns = ", ".join(data.keys())
+                placeholders = ", ".join(["?" for _ in data])
+
+                conn.execute(
+                    f"INSERT OR REPLACE INTO recovery_states ({columns}) VALUES ({placeholders})",
+                    list(data.values()),
+                )
+                return True
+            except Exception as e:
+                logger.error(f"Failed to store recovery state: {e}")
+                return False
+
+    def get_recovery_states(
+        self,
+        repository: Optional[str] = None,
+        status: Optional[str] = None,
+        limit: int = 100,
+    ) -> List:
+        """Get recovery states from the database."""
+        with self.get_connection() as conn:
+            query = "SELECT * FROM recovery_states WHERE 1=1"
+            params = []
+
+            if repository:
+                query += " AND repository = ?"
+                params.append(repository)
+
+            if status:
+                query += " AND status = ?"
+                params.append(status)
+
+            query += " ORDER BY started_at DESC LIMIT ?"
+            params.append(limit)
+
+            cursor = conn.execute(query, params)
+            recovery_states = []
+
+            for row in cursor.fetchall():
+                row_dict = dict(row)
+                recovery_state = RecoveryState.from_dict(row_dict)
+                recovery_states.append(recovery_state)
+
+            return recovery_states
+
+    def get_recovery_state_by_id(self, recovery_id: str) -> Optional:
+        """Get a recovery state by ID."""
+        with self.get_connection() as conn:
+            cursor = conn.execute(
+                "SELECT * FROM recovery_states WHERE id = ?",
+                (recovery_id,),
+            )
+            row = cursor.fetchone()
+
+            if row:
+                row_dict = dict(row)
+                return RecoveryState.from_dict(row_dict)
+
+            return None
+
+    def delete_old_checkpoints(self, repository: str, keep_days: int = 30) -> int:
+        """Delete old workflow checkpoints to manage storage."""
+        with self.get_connection() as conn:
+            cursor = conn.execute(
+                """
+                DELETE FROM workflow_checkpoints 
+                WHERE repository = ? 
+                AND created_at < datetime('now', '-{} days')
+                """.format(
+                    keep_days
+                ),
+                (repository,),
+            )
+            return cursor.rowcount
+
 
 def run_migrations(db_path: str = "storyteller.db"):
     """Run database migrations to set up the schema."""
@@ -1689,6 +1933,8 @@ def run_migrations(db_path: str = "storyteller.db"):
             "failure_patterns",
             "retry_attempts",
             "escalation_records",
+            "workflow_checkpoints",
+            "recovery_states",
         ]
         missing_tables = [t for t in expected_tables if t not in tables]
 

@@ -902,3 +902,155 @@ class EscalationRecord:
             ),
             metadata=json.loads(data["metadata"]) if data["metadata"] else {},
         )
+
+
+@dataclass
+class WorkflowCheckpoint:
+    """Represents a workflow state checkpoint for recovery purposes."""
+
+    id: str = field(default_factory=lambda: f"checkpoint_{uuid.uuid4().hex[:8]}")
+    repository: str = ""
+    workflow_name: str = ""
+    run_id: str = ""
+    commit_sha: str = ""
+    checkpoint_type: str = "step"  # step, job, workflow
+    checkpoint_name: str = ""
+    created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    workflow_state: Dict[str, Any] = field(default_factory=dict)
+    environment_context: Dict[str, Any] = field(default_factory=dict)
+    dependencies: List[str] = field(default_factory=list)
+    artifacts: List[str] = field(default_factory=list)
+    metadata: Dict[str, Any] = field(default_factory=dict)
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to dictionary for storage."""
+        return {
+            "id": self.id,
+            "repository": self.repository,
+            "workflow_name": self.workflow_name,
+            "run_id": self.run_id,
+            "commit_sha": self.commit_sha,
+            "checkpoint_type": self.checkpoint_type,
+            "checkpoint_name": self.checkpoint_name,
+            "created_at": self.created_at.isoformat(),
+            "workflow_state": json.dumps(self.workflow_state),
+            "environment_context": json.dumps(self.environment_context),
+            "dependencies": json.dumps(self.dependencies),
+            "artifacts": json.dumps(self.artifacts),
+            "metadata": json.dumps(self.metadata),
+        }
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "WorkflowCheckpoint":
+        """Create from dictionary."""
+        return cls(
+            id=data["id"],
+            repository=data["repository"],
+            workflow_name=data["workflow_name"],
+            run_id=data["run_id"],
+            commit_sha=data["commit_sha"],
+            checkpoint_type=data["checkpoint_type"],
+            checkpoint_name=data["checkpoint_name"],
+            created_at=datetime.fromisoformat(data["created_at"]),
+            workflow_state=(
+                json.loads(data["workflow_state"]) if data["workflow_state"] else {}
+            ),
+            environment_context=(
+                json.loads(data["environment_context"])
+                if data["environment_context"]
+                else {}
+            ),
+            dependencies=(
+                json.loads(data["dependencies"]) if data["dependencies"] else []
+            ),
+            artifacts=json.loads(data["artifacts"]) if data["artifacts"] else [],
+            metadata=json.loads(data["metadata"]) if data["metadata"] else {},
+        )
+
+
+class RecoveryStatus(Enum):
+    """Recovery operation status."""
+
+    PENDING = "pending"
+    IN_PROGRESS = "in_progress"
+    COMPLETED = "completed"
+    FAILED = "failed"
+    CANCELLED = "cancelled"
+
+
+@dataclass
+class RecoveryState:
+    """Represents a recovery operation state and progress."""
+
+    id: str = field(default_factory=lambda: f"recovery_{uuid.uuid4().hex[:8]}")
+    failure_id: str = ""  # References PipelineFailure.id
+    repository: str = ""
+    recovery_type: str = "retry"  # retry, resume, rollback
+    status: RecoveryStatus = RecoveryStatus.PENDING
+    target_checkpoint_id: Optional[str] = None
+    recovery_plan: List[str] = field(default_factory=list)
+    started_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    completed_at: Optional[datetime] = None
+    progress_steps: List[Dict[str, Any]] = field(default_factory=list)
+    recovery_context: Dict[str, Any] = field(default_factory=dict)
+    rollback_checkpoint_id: Optional[str] = None
+    corruption_detected: bool = False
+    validation_results: Dict[str, Any] = field(default_factory=dict)
+    metadata: Dict[str, Any] = field(default_factory=dict)
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to dictionary for storage."""
+        return {
+            "id": self.id,
+            "failure_id": self.failure_id,
+            "repository": self.repository,
+            "recovery_type": self.recovery_type,
+            "status": self.status.value,
+            "target_checkpoint_id": self.target_checkpoint_id,
+            "recovery_plan": json.dumps(self.recovery_plan),
+            "started_at": self.started_at.isoformat(),
+            "completed_at": (
+                self.completed_at.isoformat() if self.completed_at else None
+            ),
+            "progress_steps": json.dumps(self.progress_steps),
+            "recovery_context": json.dumps(self.recovery_context),
+            "rollback_checkpoint_id": self.rollback_checkpoint_id,
+            "corruption_detected": self.corruption_detected,
+            "validation_results": json.dumps(self.validation_results),
+            "metadata": json.dumps(self.metadata),
+        }
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "RecoveryState":
+        """Create from dictionary."""
+        return cls(
+            id=data["id"],
+            failure_id=data["failure_id"],
+            repository=data["repository"],
+            recovery_type=data["recovery_type"],
+            status=RecoveryStatus(data["status"]),
+            target_checkpoint_id=data.get("target_checkpoint_id"),
+            recovery_plan=(
+                json.loads(data["recovery_plan"]) if data["recovery_plan"] else []
+            ),
+            started_at=datetime.fromisoformat(data["started_at"]),
+            completed_at=(
+                datetime.fromisoformat(data["completed_at"])
+                if data["completed_at"]
+                else None
+            ),
+            progress_steps=(
+                json.loads(data["progress_steps"]) if data["progress_steps"] else []
+            ),
+            recovery_context=(
+                json.loads(data["recovery_context"]) if data["recovery_context"] else {}
+            ),
+            rollback_checkpoint_id=data.get("rollback_checkpoint_id"),
+            corruption_detected=data.get("corruption_detected", False),
+            validation_results=(
+                json.loads(data["validation_results"])
+                if data["validation_results"]
+                else {}
+            ),
+            metadata=json.loads(data["metadata"]) if data["metadata"] else {},
+        )

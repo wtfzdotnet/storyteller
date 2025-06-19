@@ -19,6 +19,12 @@ from models import (
     RetryAttempt,
 )
 
+try:
+    from recovery_manager import RecoveryManager
+except ImportError:
+    # Handle case where recovery_manager is not available
+    RecoveryManager = None
+
 logger = logging.getLogger(__name__)
 
 
@@ -29,6 +35,9 @@ class PipelineMonitor:
         self.config = config
         self.database = DatabaseManager()
         self.github_handler = GitHubHandler(config)
+
+        # Initialize recovery manager if available
+        self.recovery_manager = RecoveryManager(config) if RecoveryManager else None
 
         # Initialize failure classification patterns
         self._init_failure_patterns()
@@ -680,6 +689,124 @@ class PipelineMonitor:
         except Exception as e:
             logger.error(f"Failed to trigger pipeline retry: {e}")
             return False
+
+    async def initiate_enhanced_recovery(
+        self, failure: "PipelineFailure", recovery_type: str = "auto"
+    ) -> Optional:
+        """Initiate enhanced recovery using the recovery manager."""
+        if not self.recovery_manager:
+            logger.warning(
+                "Recovery manager not available, falling back to basic retry"
+            )
+            return await self.retry_failed_pipeline(failure)
+
+        try:
+            # Determine best recovery strategy
+            if recovery_type == "auto":
+                recovery_type = self._determine_recovery_strategy(failure)
+
+            logger.info(
+                f"Initiating enhanced {recovery_type} recovery for failure {failure.id}"
+            )
+
+            # Create checkpoint before recovery if needed
+            if recovery_type in ["resume", "rollback"] and failure.pipeline_id:
+                await self._create_pre_recovery_checkpoint(failure)
+
+            # Initiate recovery
+            recovery_state = await self.recovery_manager.initiate_recovery(
+                failure, recovery_type
+            )
+
+            # Execute recovery
+            success = await self.recovery_manager.execute_recovery(recovery_state)
+
+            if success:
+                logger.info(
+                    f"Enhanced recovery {recovery_state.id} completed successfully"
+                )
+                # Mark original failure as resolved
+                failure.resolved_at = datetime.now(timezone.utc)
+                self.database.store_pipeline_failure(failure)
+            else:
+                logger.warning(f"Enhanced recovery {recovery_state.id} failed")
+
+            return recovery_state
+
+        except Exception as e:
+            logger.error(f"Enhanced recovery failed: {e}")
+            # Fall back to basic retry
+            return await self.retry_failed_pipeline(failure)
+
+    def _determine_recovery_strategy(self, failure: "PipelineFailure") -> str:
+        """Determine the best recovery strategy for a failure."""
+        # Check if there are recent checkpoints for resumption
+        if self.recovery_manager:
+            checkpoints = self.recovery_manager.database.get_workflow_checkpoints(
+                repository=failure.repository, limit=5
+            )
+
+            # If we have recent checkpoints, consider resume
+            recent_checkpoints = [
+                cp
+                for cp in checkpoints
+                if cp.run_id == failure.pipeline_id
+                or cp.commit_sha == failure.commit_sha
+            ]
+
+            if recent_checkpoints:
+                # For build/dependency failures, prefer resume
+                if failure.category in [
+                    FailureCategory.BUILD,
+                    FailureCategory.DEPENDENCY,
+                ]:
+                    return "resume"
+
+                # For critical failures with good checkpoints, consider rollback
+                if (
+                    failure.severity == FailureSeverity.CRITICAL
+                    and len(recent_checkpoints) > 1
+                ):
+                    return "rollback"
+
+        # For simple failures, use retry
+        if failure.category in [FailureCategory.LINTING, FailureCategory.FORMATTING]:
+            return "retry"
+
+        # Default to retry for other cases
+        return "retry"
+
+    async def _create_pre_recovery_checkpoint(self, failure: "PipelineFailure"):
+        """Create a checkpoint before attempting recovery."""
+        if not self.recovery_manager:
+            return
+
+        try:
+            checkpoint = await self.recovery_manager.create_checkpoint(
+                repository=failure.repository,
+                workflow_name="pre_recovery",
+                run_id=failure.pipeline_id,
+                commit_sha=failure.commit_sha,
+                checkpoint_type="failure_point",
+                checkpoint_name=f"before_recovery_{failure.id}",
+                workflow_state={
+                    "failure_context": {
+                        "job_name": failure.job_name,
+                        "step_name": failure.step_name,
+                        "category": failure.category.value,
+                        "severity": failure.severity.value,
+                    }
+                },
+                environment_context={
+                    "failure_detected_at": failure.detected_at.isoformat(),
+                    "retry_count": failure.retry_count,
+                },
+            )
+
+            logger.info(f"Created pre-recovery checkpoint {checkpoint.id}")
+
+        except Exception as e:
+            logger.warning(f"Failed to create pre-recovery checkpoint: {e}")
 
     def check_for_escalation(self, repository: str) -> Optional["EscalationRecord"]:
         """Check if failures in a repository need escalation."""

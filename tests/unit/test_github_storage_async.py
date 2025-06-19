@@ -4,14 +4,13 @@ from datetime import datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-
-from src.storyteller.config import Config
-from src.storyteller.github_storage import (
+from config import Config
+from github_storage import (
     GitHubStorageManager,
 )
-from src.storyteller.github_storage import StorageConfig as GSStorageConfig
-from src.storyteller.models import Epic, StoryStatus, StoryType, SubStory, UserStory
-from src.storyteller.story_manager import StoryAnalysis
+from github_storage import StorageConfig as GSStorageConfig
+from models import Epic, StoryStatus, StoryType, SubStory, UserStory
+from story_manager import StoryAnalysis
 
 
 @pytest.fixture
@@ -29,7 +28,7 @@ def config():
 
 
 @pytest.mark.asyncio
-@patch("src.storyteller.github_storage.GitHubHandler")
+@patch("github_storage.GitHubHandler")
 async def test_save_user_story(mock_github_handler_class, config):
     """Test saving a User Story to GitHub."""
     # Setup mocks
@@ -68,7 +67,7 @@ async def test_save_user_story(mock_github_handler_class, config):
 
 
 @pytest.mark.asyncio
-@patch("src.storyteller.github_storage.GitHubHandler")
+@patch("github_storage.GitHubHandler")
 async def test_save_sub_story(mock_github_handler_class, config):
     """Test saving a Sub-Story to GitHub."""
     # Setup mocks
@@ -108,7 +107,7 @@ async def test_save_sub_story(mock_github_handler_class, config):
 
 
 @pytest.mark.asyncio
-@patch("src.storyteller.github_storage.GitHubHandler")
+@patch("github_storage.GitHubHandler")
 async def test_save_expert_analysis(mock_github_handler_class, config):
     """Test saving expert analysis as a comment."""
     # Setup mocks
@@ -142,7 +141,7 @@ async def test_save_expert_analysis(mock_github_handler_class, config):
 
 
 @pytest.mark.asyncio
-@patch("src.storyteller.github_storage.GitHubHandler")
+@patch("github_storage.GitHubHandler")
 async def test_parse_epic_from_issue(mock_github_handler_class, config):
     """Test parsing an Epic from a GitHub issue."""
     # Setup mocks
@@ -199,7 +198,7 @@ This is a test epic with comprehensive feature set.
 
 
 @pytest.mark.asyncio
-@patch("src.storyteller.github_storage.GitHubHandler")
+@patch("github_storage.GitHubHandler")
 async def test_parse_epic_from_issue_invalid(mock_github_handler_class, config):
     """Test parsing from an invalid issue."""
     # Setup mocks

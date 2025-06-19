@@ -1,8 +1,9 @@
 """Tests for multi-role discussion simulation engine."""
 
 import asyncio
-import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
 
 from src.storyteller.config import Config
 from src.storyteller.discussion_engine import DiscussionEngine
@@ -48,10 +49,12 @@ def mock_role_engine():
 @pytest.fixture
 def discussion_engine(mock_config, mock_database, mock_llm_handler, mock_role_engine):
     """Create a discussion engine with mocked dependencies."""
-    with patch("src.storyteller.discussion_engine.DatabaseManager") as mock_db, \
-         patch("src.storyteller.discussion_engine.LLMHandler") as mock_llm, \
-         patch("src.storyteller.discussion_engine.RoleAssignmentEngine") as mock_role, \
-         patch("src.storyteller.discussion_engine.MultiRepositoryContextReader"):
+    with (
+        patch("src.storyteller.discussion_engine.DatabaseManager") as mock_db,
+        patch("src.storyteller.discussion_engine.LLMHandler") as mock_llm,
+        patch("src.storyteller.discussion_engine.RoleAssignmentEngine") as mock_role,
+        patch("src.storyteller.discussion_engine.MultiRepositoryContextReader"),
+    ):
 
         mock_db.return_value = mock_database
         mock_llm.return_value = mock_llm_handler
@@ -65,7 +68,9 @@ class TestDiscussionEngine:
     """Test cases for the DiscussionEngine class."""
 
     @pytest.mark.asyncio
-    async def test_start_discussion_basic(self, discussion_engine, mock_database, mock_llm_handler, mock_role_engine):
+    async def test_start_discussion_basic(
+        self, discussion_engine, mock_database, mock_llm_handler, mock_role_engine
+    ):
         """Test basic discussion start functionality."""
         # Setup
         topic = "API Design Approach"
@@ -105,16 +110,18 @@ class TestDiscussionEngine:
         mock_database.save_discussion_thread.return_value = "thread_123"
 
         # Execute
-        result = await discussion_engine.start_discussion(topic, story_content, repositories)
+        result = await discussion_engine.start_discussion(
+            topic, story_content, repositories
+        )
 
         # Assert
         assert result.topic == topic
         assert result.conversation_id
         assert len(result.perspectives) > 0
-        
+
         # Verify role assignment was called
         mock_role_engine.assign_roles.assert_called_once()
-        
+
         # Verify LLM was called for perspective generation
         assert mock_llm_handler.generate_response.call_count >= 3  # At least 3 roles
 
@@ -127,13 +134,13 @@ class TestDiscussionEngine:
             viewpoint="Use microservices architecture for scalability and maintainability",
             confidence_level=0.9,
         )
-        
+
         perspective2 = RolePerspective(
-            role_name="lead-developer", 
+            role_name="lead-developer",
             viewpoint="Microservices approach provides good scalability and separation of concerns",
             confidence_level=0.8,
         )
-        
+
         perspective3 = RolePerspective(
             role_name="devops-engineer",
             viewpoint="Monolithic approach would be simpler to deploy and monitor initially",
@@ -191,7 +198,9 @@ class TestDiscussionEngine:
         assert perspective.repository_context == "backend, frontend"
 
     @pytest.mark.asyncio
-    async def test_generate_discussion_summary(self, discussion_engine, mock_llm_handler):
+    async def test_generate_discussion_summary(
+        self, discussion_engine, mock_llm_handler
+    ):
         """Test discussion summary generation."""
         # Setup thread with perspectives
         perspectives = [
@@ -258,7 +267,9 @@ class TestDiscussionEngine:
         assert summary.overall_consensus == 0.75
 
     @pytest.mark.asyncio
-    async def test_high_consensus_resolution(self, discussion_engine, mock_llm_handler, mock_role_engine):
+    async def test_high_consensus_resolution(
+        self, discussion_engine, mock_llm_handler, mock_role_engine
+    ):
         """Test that high consensus leads to resolved status."""
         # Setup for high consensus scenario
         topic = "Simple feature implementation"
@@ -287,18 +298,22 @@ class TestDiscussionEngine:
         )
 
         # Execute
-        result = await discussion_engine.start_discussion(topic, story_content, repositories)
+        result = await discussion_engine.start_discussion(
+            topic, story_content, repositories
+        )
 
         # Assert that high consensus leads to resolution
         # Note: This depends on the actual consensus calculation and threshold
         assert result.topic == topic
-        
+
         # The status should be resolved if consensus is above threshold
         # or needs_human_input if below threshold
         assert result.status in ["resolved", "needs_human_input", "active"]
 
     @pytest.mark.asyncio
-    async def test_low_consensus_human_input(self, discussion_engine, mock_llm_handler, mock_role_engine):
+    async def test_low_consensus_human_input(
+        self, discussion_engine, mock_llm_handler, mock_role_engine
+    ):
         """Test that low consensus triggers human input requirement."""
         # Setup for low consensus scenario
         topic = "Complex architectural decision"
@@ -317,9 +332,15 @@ class TestDiscussionEngine:
 
         # Mock LLM responses with conflicting viewpoints
         responses = [
-            MagicMock(content="Viewpoint: Microservices are the way to go for this project."),
-            MagicMock(content="Viewpoint: Monolithic architecture would be much simpler."),
-            MagicMock(content="Viewpoint: Consider a modular monolith as a compromise."),
+            MagicMock(
+                content="Viewpoint: Microservices are the way to go for this project."
+            ),
+            MagicMock(
+                content="Viewpoint: Monolithic architecture would be much simpler."
+            ),
+            MagicMock(
+                content="Viewpoint: Consider a modular monolith as a compromise."
+            ),
         ]
         mock_llm_handler.generate_response.side_effect = responses
 
@@ -370,7 +391,9 @@ class TestDiscussionEngine:
         assert "Data breaches" in context
 
     @pytest.mark.asyncio
-    async def test_resume_discussion_with_human_input(self, discussion_engine, mock_database):
+    async def test_resume_discussion_with_human_input(
+        self, discussion_engine, mock_database
+    ):
         """Test resuming a discussion with additional human input."""
         # Create existing thread
         thread = DiscussionThread(
@@ -389,20 +412,23 @@ class TestDiscussionEngine:
         )
 
         # Mock conduct_discussion_round method
-        with patch.object(discussion_engine, '_conduct_discussion_round') as mock_conduct:
+        with patch.object(
+            discussion_engine, "_conduct_discussion_round"
+        ) as mock_conduct:
             mock_conduct.return_value = None
 
             # Execute
             result = await discussion_engine.resume_discussion(
-                "thread_123", 
-                "Let's focus on REST API with OpenAPI documentation"
+                "thread_123", "Let's focus on REST API with OpenAPI documentation"
             )
 
             # Assert
             assert result.id == "thread_123"
-            
+
             # Should have added human facilitator perspective
-            human_perspectives = [p for p in result.perspectives if p.role_name == "human-facilitator"]
+            human_perspectives = [
+                p for p in result.perspectives if p.role_name == "human-facilitator"
+            ]
             assert len(human_perspectives) == 1
             assert "OpenAPI documentation" in human_perspectives[0].viewpoint
 
@@ -414,7 +440,7 @@ class TestDiscussionEngine:
             RolePerspective(role_name="role1", viewpoint="Agree on approach A"),
             RolePerspective(role_name="role2", viewpoint="Support approach A"),
         ]
-        
+
         thread = DiscussionThread(
             id="thread_123",
             topic="Test Topic",

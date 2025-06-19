@@ -16,8 +16,8 @@ from models import (
     Message,
     RolePerspective,
 )
-from role_analyzer import RoleAssignmentEngine
 from multi_repo_context import MultiRepositoryContextReader
+from role_analyzer import RoleAssignmentEngine
 
 logger = logging.getLogger(__name__)
 

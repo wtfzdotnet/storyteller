@@ -618,9 +618,9 @@ class DiscussionThread:
         # Simple consensus calculation based on agreement in viewpoints
         # More sophisticated algorithms could be implemented
         agreement_scores = []
-        
+
         for i, perspective1 in enumerate(self.perspectives):
-            for j, perspective2 in enumerate(self.perspectives[i+1:], i+1):
+            for j, perspective2 in enumerate(self.perspectives[i + 1 :], i + 1):
                 # Calculate similarity between viewpoints (simplified)
                 if perspective1.viewpoint and perspective2.viewpoint:
                     # Simple keyword overlap check

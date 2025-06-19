@@ -2,7 +2,7 @@
 
 import logging
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 from config import Config, get_config
 from database import DatabaseManager
@@ -330,14 +330,14 @@ class ConversationManager:
     ) -> "DiscussionThread":
         """
         Start a multi-role discussion simulation.
-        
+
         This is a convenience method that creates a discussion engine instance
         and delegates to it for the actual discussion simulation.
         """
         from discussion_engine import DiscussionEngine
-        
+
         discussion_engine = DiscussionEngine(self.config)
-        
+
         return await discussion_engine.start_discussion(
             topic=topic,
             story_content=story_content,
@@ -351,24 +351,26 @@ class ConversationManager:
     ) -> Optional["DiscussionSummary"]:
         """Generate a summary for discussions in a conversation."""
         from discussion_engine import DiscussionEngine
-        
+
         # Get discussion threads for this conversation
         threads = self.database.list_discussion_threads(conversation_id=conversation_id)
-        
+
         if not threads:
-            logger.warning(f"No discussion threads found for conversation {conversation_id}")
+            logger.warning(
+                f"No discussion threads found for conversation {conversation_id}"
+            )
             return None
-        
+
         # Use the most recent thread for summary generation
         latest_thread = threads[0]  # Already sorted by created_at DESC
-        
+
         discussion_engine = DiscussionEngine(self.config)
         return await discussion_engine.generate_discussion_summary(latest_thread)
 
     async def check_discussion_consensus(self, conversation_id: str) -> Dict[str, Any]:
         """Check consensus status for all discussions in a conversation."""
         threads = self.database.list_discussion_threads(conversation_id=conversation_id)
-        
+
         if not threads:
             return {
                 "conversation_id": conversation_id,
@@ -376,28 +378,32 @@ class ConversationManager:
                 "overall_consensus": 0.0,
                 "threads": [],
             }
-        
+
         thread_summaries = []
         total_consensus = 0.0
-        
+
         for thread in threads:
             consensus = thread.calculate_consensus()
-            thread_summaries.append({
-                "thread_id": thread.id,
-                "topic": thread.topic,
-                "consensus_level": consensus,
-                "status": thread.status,
-                "participating_roles": [p.role_name for p in thread.perspectives],
-            })
+            thread_summaries.append(
+                {
+                    "thread_id": thread.id,
+                    "topic": thread.topic,
+                    "consensus_level": consensus,
+                    "status": thread.status,
+                    "participating_roles": [p.role_name for p in thread.perspectives],
+                }
+            )
             total_consensus += consensus
-        
+
         overall_consensus = total_consensus / len(threads) if threads else 0.0
-        
+
         return {
             "conversation_id": conversation_id,
             "has_discussions": True,
             "overall_consensus": overall_consensus,
             "thread_count": len(threads),
             "threads": thread_summaries,
-            "requires_human_input": any(t.status == "needs_human_input" for t in threads),
+            "requires_human_input": any(
+                t.status == "needs_human_input" for t in threads
+            ),
         }

@@ -2013,54 +2013,54 @@ class DatabaseManager:
 
     def save_discussion_thread(self, thread: "DiscussionThread") -> str:
         """Save a discussion thread to the database."""
-        from models import RolePerspective, DiscussionThread
-        
+        from models import DiscussionThread, RolePerspective
+
         with self.get_connection() as conn:
             # Save thread data
             thread_data = thread.to_dict()
-            
+
             thread_columns = ", ".join(thread_data.keys())
             thread_placeholders = ", ".join(["?" for _ in thread_data])
-            
+
             conn.execute(
                 f"INSERT OR REPLACE INTO discussion_threads ({thread_columns}) VALUES ({thread_placeholders})",
                 list(thread_data.values()),
             )
-            
+
             # Save perspectives
             for perspective in thread.perspectives:
                 perspective_data = perspective.to_dict()
-                
+
                 perspective_columns = ", ".join(perspective_data.keys())
                 perspective_placeholders = ", ".join(["?" for _ in perspective_data])
-                
+
                 conn.execute(
                     f"INSERT OR REPLACE INTO role_perspectives ({perspective_columns}) VALUES ({perspective_placeholders})",
                     list(perspective_data.values()),
                 )
-                
+
                 # Link perspective to thread
                 conn.execute(
                     "INSERT OR REPLACE INTO thread_perspectives (thread_id, perspective_id) VALUES (?, ?)",
                     (thread.id, perspective.id),
                 )
-            
+
             return thread.id
 
     def get_discussion_thread(self, thread_id: str) -> Optional["DiscussionThread"]:
         """Retrieve a discussion thread by ID with all perspectives."""
-        from models import RolePerspective, DiscussionThread
-        
+        from models import DiscussionThread, RolePerspective
+
         with self.get_connection() as conn:
             # Get thread
             cursor = conn.execute(
                 "SELECT * FROM discussion_threads WHERE id = ?", (thread_id,)
             )
             thread_row = cursor.fetchone()
-            
+
             if not thread_row:
                 return None
-            
+
             # Get perspectives
             cursor = conn.execute(
                 """
@@ -2071,7 +2071,7 @@ class DatabaseManager:
                 """,
                 (thread_id,),
             )
-            
+
             perspectives = []
             for row in cursor.fetchall():
                 perspective = RolePerspective(
@@ -2087,7 +2087,7 @@ class DatabaseManager:
                     metadata=json.loads(row["metadata"] or "{}"),
                 )
                 perspectives.append(perspective)
-            
+
             # Create thread object
             thread = DiscussionThread(
                 id=thread_row["id"],
@@ -2102,38 +2102,40 @@ class DatabaseManager:
                 updated_at=datetime.fromisoformat(thread_row["updated_at"]),
                 metadata=json.loads(thread_row["metadata"] or "{}"),
             )
-            
+
             return thread
 
     def save_discussion_summary(self, summary: "DiscussionSummary") -> str:
         """Save a discussion summary to the database."""
         with self.get_connection() as conn:
             summary_data = summary.to_dict()
-            
+
             summary_columns = ", ".join(summary_data.keys())
             summary_placeholders = ", ".join(["?" for _ in summary_data])
-            
+
             conn.execute(
                 f"INSERT OR REPLACE INTO discussion_summaries ({summary_columns}) VALUES ({summary_placeholders})",
                 list(summary_data.values()),
             )
-            
+
             return summary.id
 
-    def get_discussion_summary(self, conversation_id: str) -> Optional["DiscussionSummary"]:
+    def get_discussion_summary(
+        self, conversation_id: str
+    ) -> Optional["DiscussionSummary"]:
         """Get the discussion summary for a conversation."""
         from models import DiscussionSummary
-        
+
         with self.get_connection() as conn:
             cursor = conn.execute(
                 "SELECT * FROM discussion_summaries WHERE conversation_id = ? ORDER BY created_at DESC LIMIT 1",
                 (conversation_id,),
             )
             row = cursor.fetchone()
-            
+
             if not row:
                 return None
-            
+
             return DiscussionSummary(
                 id=row["id"],
                 conversation_id=row["conversation_id"],
@@ -2159,41 +2161,41 @@ class DatabaseManager:
             query = "SELECT id FROM discussion_threads"
             params = []
             conditions = []
-            
+
             if conversation_id:
                 conditions.append("conversation_id = ?")
                 params.append(conversation_id)
-            
+
             if status:
                 conditions.append("status = ?")
                 params.append(status)
-            
+
             if conditions:
                 query += " WHERE " + " AND ".join(conditions)
-            
+
             query += " ORDER BY created_at DESC"
-            
+
             cursor = conn.execute(query, params)
             thread_ids = [row[0] for row in cursor.fetchall()]
-            
+
             threads = []
             for thread_id in thread_ids:
                 thread = self.get_discussion_thread(thread_id)
                 if thread:
                     threads.append(thread)
-            
+
             return threads
 
     def get_role_perspectives_by_role(self, role_name: str) -> List["RolePerspective"]:
         """Get all perspectives from a specific role."""
         from models import RolePerspective
-        
+
         with self.get_connection() as conn:
             cursor = conn.execute(
                 "SELECT * FROM role_perspectives WHERE role_name = ? ORDER BY created_at DESC",
                 (role_name,),
             )
-            
+
             perspectives = []
             for row in cursor.fetchall():
                 perspective = RolePerspective(
@@ -2209,7 +2211,7 @@ class DatabaseManager:
                     metadata=json.loads(row["metadata"] or "{}"),
                 )
                 perspectives.append(perspective)
-            
+
             return perspectives
 
 

@@ -7,8 +7,6 @@ from pathlib import Path
 from typing import List, Optional
 
 import typer
-from src.storyteller.automation.workflow_processor import WorkflowProcessor
-from src.storyteller.config import get_config
 from rich.console import Console
 from rich.panel import Panel
 from rich.progress import Progress, SpinnerColumn, TextColumn
@@ -17,6 +15,8 @@ from rich.table import Table
 
 # Setup paths for imports
 import setup_path
+from src.storyteller.automation.workflow_processor import WorkflowProcessor
+from src.storyteller.config import get_config
 
 # Initialize CLI application
 app = typer.Typer(
@@ -753,31 +753,33 @@ app.add_typer(consensus_app, name="consensus")
 
 @consensus_app.command("list-interventions")
 def list_pending_interventions(
-    limit: int = typer.Option(50, "--limit", help="Maximum number of interventions to show"),
+    limit: int = typer.Option(
+        50, "--limit", help="Maximum number of interventions to show"
+    ),
     debug: bool = typer.Option(False, "--debug", help="Enable debug logging"),
 ):
     """List pending manual interventions."""
-    
+
     setup_logging(debug)
 
     async def _list_interventions():
         try:
             from src.storyteller.conversation_manager import ConversationManager
-            
+
             manager = ConversationManager()
             interventions = manager.get_pending_interventions(limit)
-            
+
             if not interventions:
                 console.print("No pending interventions found.")
                 return
-            
+
             table = Table(title="Pending Manual Interventions")
             table.add_column("ID", style="cyan")
             table.add_column("Conversation", style="green")
             table.add_column("Reason", style="yellow")
             table.add_column("Type", style="blue")
             table.add_column("Triggered At", style="magenta")
-            
+
             for intervention in interventions:
                 table.add_row(
                     intervention["id"],
@@ -786,9 +788,9 @@ def list_pending_interventions(
                     intervention["intervention_type"],
                     intervention["triggered_at"][:19],  # Truncate timestamp
                 )
-            
+
             console.print(table)
-            
+
         except Exception as e:
             console.print(f"[red]Error listing interventions: {e}[/red]")
             if debug:
@@ -800,40 +802,55 @@ def list_pending_interventions(
 
 @consensus_app.command("resolve")
 def resolve_intervention(
-    intervention_id: str = typer.Argument(..., help="ID of the intervention to resolve"),
-    decision: str = typer.Option(..., "--decision", help="Human decision for the consensus"),
+    intervention_id: str = typer.Argument(
+        ..., help="ID of the intervention to resolve"
+    ),
+    decision: str = typer.Option(
+        ..., "--decision", help="Human decision for the consensus"
+    ),
     rationale: str = typer.Option("", "--rationale", help="Rationale for the decision"),
-    intervener_id: str = typer.Option("", "--intervener", help="ID of the person making the decision"),
-    intervener_role: str = typer.Option("project-manager", "--role", help="Role of the intervener"),
+    intervener_id: str = typer.Option(
+        "", "--intervener", help="ID of the person making the decision"
+    ),
+    intervener_role: str = typer.Option(
+        "project-manager", "--role", help="Role of the intervener"
+    ),
     debug: bool = typer.Option(False, "--debug", help="Enable debug logging"),
 ):
     """Resolve a manual intervention with a human decision."""
-    
+
     setup_logging(debug)
 
     async def _resolve_intervention():
         try:
             from src.storyteller.conversation_manager import ConversationManager
-            
+
             manager = ConversationManager()
-            
+
             # First check if intervention exists
             status = manager.get_intervention_status(intervention_id)
             if not status:
                 console.print(f"[red]Intervention {intervention_id} not found.[/red]")
                 sys.exit(1)
-            
+
             if status["status"] != "pending":
-                console.print(f"[red]Intervention {intervention_id} is not pending (status: {status['status']}).[/red]")
+                console.print(
+                    f"[red]Intervention {intervention_id} is not pending (status: {status['status']}).[/red]"
+                )
                 sys.exit(1)
-            
+
             # Show intervention details
-            console.print(Panel(f"""
+            console.print(
+                Panel(
+                    f"""
 **Original Decision:** {status['original_decision']}
 **Trigger Reason:** {status['trigger_reason']}
 **Affected Roles:** {', '.join(status['affected_roles'])}
-            """, title=f"Intervention {intervention_id}"))
-            
+            """,
+                    title=f"Intervention {intervention_id}",
+                )
+            )
+
             # Resolve the intervention
             success = await manager.resolve_manual_intervention(
                 intervention_id=intervention_id,
@@ -842,16 +859,20 @@ def resolve_intervention(
                 intervener_id=intervener_id,
                 intervener_role=intervener_role,
             )
-            
+
             if success:
-                console.print(f"[green]Successfully resolved intervention {intervention_id}[/green]")
+                console.print(
+                    f"[green]Successfully resolved intervention {intervention_id}[/green]"
+                )
                 console.print(f"Decision: {decision}")
                 if rationale:
                     console.print(f"Rationale: {rationale}")
             else:
-                console.print(f"[red]Failed to resolve intervention {intervention_id}[/red]")
+                console.print(
+                    f"[red]Failed to resolve intervention {intervention_id}[/red]"
+                )
                 sys.exit(1)
-            
+
         except Exception as e:
             console.print(f"[red]Error resolving intervention: {e}[/red]")
             if debug:
@@ -867,20 +888,20 @@ def get_intervention_status(
     debug: bool = typer.Option(False, "--debug", help="Enable debug logging"),
 ):
     """Get the status of a manual intervention."""
-    
+
     setup_logging(debug)
 
     async def _get_status():
         try:
             from src.storyteller.conversation_manager import ConversationManager
-            
+
             manager = ConversationManager()
             status = manager.get_intervention_status(intervention_id)
-            
+
             if not status:
                 console.print(f"[red]Intervention {intervention_id} not found.[/red]")
                 sys.exit(1)
-            
+
             # Create detailed status panel
             status_content = f"""
 **ID:** {status['id']}
@@ -892,40 +913,44 @@ def get_intervention_status(
 **Original Decision:** {status['original_decision']}
 **Triggered At:** {status['triggered_at']}
             """
-            
-            if status['human_decision']:
+
+            if status["human_decision"]:
                 status_content += f"""
 **Human Decision:** {status['human_decision']}
 **Human Rationale:** {status['human_rationale']}
 **Intervener:** {status['intervener_role']} ({status['intervener_id']})
 **Resolved At:** {status['resolved_at']}
                 """
-            
-            if status['affected_roles']:
+
+            if status["affected_roles"]:
                 status_content += f"""
 **Affected Roles:** {', '.join(status['affected_roles'])}
                 """
-            
+
             console.print(Panel(status_content, title=f"Intervention Status"))
-            
+
             # Show audit trail if available
-            if status['audit_trail']:
+            if status["audit_trail"]:
                 table = Table(title="Audit Trail")
                 table.add_column("Timestamp", style="cyan")
                 table.add_column("Action", style="green")
                 table.add_column("Actor", style="yellow")
                 table.add_column("Details", style="white")
-                
-                for entry in status['audit_trail']:
+
+                for entry in status["audit_trail"]:
                     table.add_row(
-                        entry['timestamp'][:19],  # Truncate timestamp
-                        entry['action'],
-                        entry['actor'],
-                        entry['details'][:50] + "..." if len(entry['details']) > 50 else entry['details']
+                        entry["timestamp"][:19],  # Truncate timestamp
+                        entry["action"],
+                        entry["actor"],
+                        (
+                            entry["details"][:50] + "..."
+                            if len(entry["details"]) > 50
+                            else entry["details"]
+                        ),
                     )
-                
+
                 console.print(table)
-            
+
         except Exception as e:
             console.print(f"[red]Error getting intervention status: {e}[/red]")
             if debug:
@@ -939,33 +964,39 @@ def get_intervention_status(
 def trigger_manual_intervention(
     conversation_id: str = typer.Argument(..., help="ID of the conversation"),
     consensus_id: str = typer.Argument(..., help="ID of the consensus process"),
-    reason: str = typer.Option("manual_request", "--reason", help="Reason for triggering intervention"),
-    intervention_type: str = typer.Option("decision", "--type", help="Type of intervention"),
+    reason: str = typer.Option(
+        "manual_request", "--reason", help="Reason for triggering intervention"
+    ),
+    intervention_type: str = typer.Option(
+        "decision", "--type", help="Type of intervention"
+    ),
     debug: bool = typer.Option(False, "--debug", help="Enable debug logging"),
 ):
     """Manually trigger an intervention for a consensus process."""
-    
+
     setup_logging(debug)
 
     async def _trigger_intervention():
         try:
             from src.storyteller.conversation_manager import ConversationManager
-            
+
             manager = ConversationManager()
-            
+
             intervention_id = await manager.trigger_manual_intervention(
                 conversation_id=conversation_id,
                 consensus_id=consensus_id,
                 trigger_reason=reason,
                 intervention_type=intervention_type,
             )
-            
-            console.print(f"[green]Successfully triggered manual intervention {intervention_id}[/green]")
+
+            console.print(
+                f"[green]Successfully triggered manual intervention {intervention_id}[/green]"
+            )
             console.print(f"Conversation: {conversation_id}")
             console.print(f"Consensus: {consensus_id}")
             console.print(f"Reason: {reason}")
             console.print(f"Type: {intervention_type}")
-            
+
         except Exception as e:
             console.print(f"[red]Error triggering intervention: {e}[/red]")
             if debug:

@@ -2,12 +2,17 @@
 
 import asyncio
 import os
+import sys
+from pathlib import Path
 
 import pytest
-from config import get_config
-from multi_repo_context import MultiRepositoryContextReader
+
+# Add project root to path for imports
+sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 from mcp_server import MCPRequest, MCPStoryServer
+from src.storyteller.config import get_config
+from src.storyteller.multi_repo_context import MultiRepositoryContextReader
 
 # Set environment for testing
 os.environ["GITHUB_TOKEN"] = "test_token"

@@ -13,6 +13,7 @@ from github_handler import GitHubHandler
 from llm_handler import LLMHandler
 from models import Epic, StoryHierarchy, StoryStatus, SubStory, UserStory
 from multi_repo_context import MultiRepositoryContextReader
+from requirement_gatherer import RequirementGatherer, GatheredRequirements
 from role_analyzer import RoleAssignmentEngine
 
 logger = logging.getLogger(__name__)
@@ -67,6 +68,9 @@ class StoryProcessor:
         # Add role assignment engine and context manager
         self.role_assignment_engine = RoleAssignmentEngine(self.config)
         self.context_reader = MultiRepositoryContextReader(self.config)
+        
+        # Add requirement gatherer for structured requirement collection
+        self.requirement_gatherer = RequirementGatherer(self.config, self.llm_handler)
 
         # Initialize GitHub storage if configured
         self.github_storage = None
@@ -672,6 +676,148 @@ Respond with a JSON object containing:
     def list_available_repositories(self) -> List[str]:
         """List all configured repositories."""
         return list(self.config.repositories.keys())
+
+    async def gather_requirements(
+        self,
+        story_content: str,
+        target_repositories: Optional[List[str]] = None,
+        manual_role_overrides: Optional[List[str]] = None,
+    ) -> GatheredRequirements:
+        """
+        Gather structured requirements from expert roles.
+        
+        Args:
+            story_content: The story content to analyze
+            target_repositories: List of target repositories (optional)
+            manual_role_overrides: Manually specified roles to include (optional)
+            
+        Returns:
+            GatheredRequirements with all gathered requirements
+        """
+        logger.info("Starting requirement gathering process")
+        
+        try:
+            # Assign roles intelligently
+            assignment_result = await self.assign_roles_intelligently(
+                story_content=story_content,
+                target_repositories=target_repositories,
+                manual_role_overrides=manual_role_overrides,
+            )
+            
+            # Convert role names to RoleAssignment objects
+            from role_analyzer import RoleAssignment
+            assigned_roles = []
+            
+            # Add primary roles
+            for role_name in assignment_result["primary_roles"]:
+                assigned_roles.append(RoleAssignment(
+                    role_name=role_name,
+                    confidence_score=0.9,  # High confidence for primary roles
+                    assignment_reason="Primary role assignment",
+                ))
+            
+            # Add secondary roles with lower confidence
+            for role_name in assignment_result["secondary_roles"]:
+                assigned_roles.append(RoleAssignment(
+                    role_name=role_name,
+                    confidence_score=0.6,  # Medium confidence for secondary roles
+                    assignment_reason="Secondary role assignment",
+                ))
+            
+            # Get repository contexts
+            repository_contexts = []
+            if target_repositories:
+                for repo_name in target_repositories:
+                    if repo_name in self.config.repositories:
+                        try:
+                            context = await self.context_reader.get_repository_context(repo_name)
+                            repository_contexts.append(context)
+                        except Exception as e:
+                            logger.warning(f"Failed to get context for repository {repo_name}: {e}")
+            
+            # Generate story ID for requirement gathering
+            story_id = assignment_result.get("story_id", self._generate_story_id())
+            
+            # Gather requirements using the requirement gatherer
+            gathered_requirements = await self.requirement_gatherer.gather_requirements(
+                story_content=story_content,
+                story_id=story_id,
+                assigned_roles=assigned_roles,
+                repository_contexts=repository_contexts,
+            )
+            
+            logger.info(f"Successfully gathered requirements for story {story_id}")
+            return gathered_requirements
+            
+        except Exception as e:
+            logger.error(f"Failed to gather requirements: {e}")
+            raise
+
+    async def analyze_story_workflow(
+        self,
+        content: str,
+        roles: Optional[List[str]] = None,
+        context: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        """
+        Enhanced story analysis workflow that includes requirement gathering.
+        
+        Args:
+            content: Story content to analyze
+            roles: Optional list of specific roles to use
+            context: Optional additional context
+            
+        Returns:
+            Dictionary with story analysis and gathered requirements
+        """
+        try:
+            # Create story request
+            story_request = StoryRequest(
+                content=content,
+                target_repositories=context.get("target_repositories") if context else None,
+                required_roles=roles,
+                context=context,
+            )
+            
+            # Process the story with expert analysis
+            processed_story = await self.process_story(story_request)
+            
+            # Gather structured requirements
+            gathered_requirements = await self.gather_requirements(
+                story_content=content,
+                target_repositories=story_request.target_repositories,
+                manual_role_overrides=roles,
+            )
+            
+            return {
+                "success": True,
+                "data": {
+                    "story_id": processed_story.story_id,
+                    "processed_story": processed_story,
+                    "gathered_requirements": gathered_requirements,
+                    "expert_analyses": processed_story.expert_analyses,
+                    "synthesized_analysis": processed_story.synthesized_analysis,
+                    "acceptance_criteria": gathered_requirements.synthesized_acceptance_criteria,
+                    "testing_requirements": gathered_requirements.synthesized_testing_requirements,
+                    "estimated_story_points": gathered_requirements.estimated_story_points,
+                    "confidence_score": gathered_requirements.confidence_score,
+                    "role_requirements": gathered_requirements.role_requirements,
+                    "target_repositories": processed_story.target_repositories,
+                    "metadata": {
+                        **processed_story.metadata,
+                        "requirement_gathering": gathered_requirements.metadata,
+                    },
+                },
+                "message": "Story analysis and requirement gathering completed successfully",
+            }
+            
+        except Exception as e:
+            logger.error(f"Story analysis workflow failed: {e}")
+            return {
+                "success": False,
+                "error": str(e),
+                "message": "Story analysis workflow failed",
+            }
 
 
 class StoryManager:

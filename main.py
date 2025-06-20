@@ -328,6 +328,144 @@ def analyze_story(
     asyncio.run(_analyze_story())
 
 
+@story_app.command("gather-requirements")
+def gather_requirements(
+    content: str = typer.Argument(..., help="Story content to gather requirements for"),
+    target_repositories: Optional[List[str]] = typer.Option(
+        None, "--repos", help="Target repositories for requirement gathering"
+    ),
+    roles: Optional[List[str]] = typer.Option(
+        None, "--roles", help="Specific expert roles to use"
+    ),
+    output_format: str = typer.Option(
+        "table", "--format", help="Output format: table, json"
+    ),
+    debug: bool = typer.Option(False, "--debug", help="Enable debug logging"),
+):
+    """Gather structured requirements from expert roles for a story."""
+
+    setup_logging(debug)
+
+    async def _gather_requirements():
+        try:
+            config = get_config()
+            processor = WorkflowProcessor(config)
+
+            with Progress(
+                SpinnerColumn(),
+                TextColumn("[blue]Gathering requirements..."),
+                transient=True,
+            ) as progress:
+                task = progress.add_task(
+                    "Gathering requirements from expert roles...", total=None
+                )
+
+                result = await processor.story_processor.gather_requirements(
+                    story_content=content,
+                    target_repositories=target_repositories,
+                    manual_role_overrides=roles,
+                )
+
+                progress.update(task, completed=True)
+
+            console.print("[green]✓[/green] Requirement gathering completed!")
+
+            if output_format == "json":
+                import json
+                from dataclasses import asdict
+
+                # Convert to serializable format
+                output = {
+                    "story_id": result.story_id,
+                    "story_content": result.story_content,
+                    "synthesized_acceptance_criteria": result.synthesized_acceptance_criteria,
+                    "synthesized_testing_requirements": result.synthesized_testing_requirements,
+                    "estimated_story_points": result.estimated_story_points,
+                    "confidence_score": result.confidence_score,
+                    "role_requirements": [
+                        {
+                            "role_name": req.role_name,
+                            "acceptance_criteria": req.acceptance_criteria,
+                            "testing_requirements": req.testing_requirements,
+                            "effort_estimate": req.effort_estimate,
+                            "confidence_level": req.confidence_level,
+                        }
+                        for req in result.role_requirements
+                    ],
+                    "metadata": result.metadata,
+                }
+                console.print(json.dumps(output, indent=2))
+            else:
+                # Display in table format
+                console.print(f"\n[bold]Story ID:[/bold] {result.story_id}")
+                console.print(
+                    f"[bold]Estimated Story Points:[/bold] {result.estimated_story_points}"
+                )
+                console.print(
+                    f"[bold]Confidence Score:[/bold] {result.confidence_score:.2f}"
+                )
+
+                # Show synthesized acceptance criteria
+                if result.synthesized_acceptance_criteria:
+                    console.print(
+                        "\n[bold green]Synthesized Acceptance Criteria:[/bold green]"
+                    )
+                    for i, criterion in enumerate(
+                        result.synthesized_acceptance_criteria, 1
+                    ):
+                        console.print(f"  {i}. {criterion}")
+
+                # Show synthesized testing requirements
+                if result.synthesized_testing_requirements:
+                    console.print(
+                        "\n[bold blue]Synthesized Testing Requirements:[/bold blue]"
+                    )
+                    for i, requirement in enumerate(
+                        result.synthesized_testing_requirements, 1
+                    ):
+                        console.print(f"  {i}. {requirement}")
+
+                # Show role-specific requirements
+                console.print(
+                    f"\n[bold]Requirements by Role ({len(result.role_requirements)} roles):[/bold]"
+                )
+
+                for req in result.role_requirements:
+                    console.print(
+                        f"\n[bold yellow]{req.role_name.upper()}[/bold yellow] (Confidence: {req.confidence_level})"
+                    )
+
+                    if req.acceptance_criteria:
+                        console.print("  [green]Acceptance Criteria:[/green]")
+                        for criterion in req.acceptance_criteria:
+                            console.print(f"    • {criterion}")
+
+                    if req.testing_requirements:
+                        console.print("  [blue]Testing Requirements:[/blue]")
+                        for test_req in req.testing_requirements:
+                            console.print(f"    • {test_req}")
+
+                    if req.effort_estimate:
+                        console.print("  [magenta]Effort Estimate:[/magenta]")
+                        effort = req.effort_estimate
+                        if "story_points" in effort:
+                            console.print(
+                                f"    • Story Points: {effort['story_points']}"
+                            )
+                        if "complexity" in effort:
+                            console.print(f"    • Complexity: {effort['complexity']}/5")
+                        if "confidence" in effort:
+                            console.print(f"    • Confidence: {effort['confidence']}")
+
+        except Exception as e:
+            console.print(f"[red]✗ Failed to gather requirements:[/red] {e}")
+            if debug:
+                console.print_exception()
+            sys.exit(1)
+
+    asyncio.run(_gather_requirements())
+
+
 @story_app.command("status")
 def get_story_status(
     story_id: str = typer.Argument(..., help="Story ID to check"),

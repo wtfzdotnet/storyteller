@@ -12,9 +12,12 @@ try:
     from .models import (
         Conversation,
         ConversationParticipant,
+        DiscussionSummary,
+        DiscussionThread,
         Epic,
         Message,
         RecoveryState,
+        RolePerspective,
         StoryHierarchy,
         StoryStatus,
         StoryType,
@@ -27,9 +30,12 @@ except ImportError:
     from models import (
         Conversation,
         ConversationParticipant,
+        DiscussionSummary,
+        DiscussionThread,
         Epic,
         Message,
         RecoveryState,
+        RolePerspective,
         StoryHierarchy,
         StoryStatus,
         StoryType,
@@ -478,6 +484,103 @@ class DatabaseManager:
         )
         conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_recovery_states_started_at ON recovery_states (started_at)"
+        )
+
+        # Discussion simulation tables
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS role_perspectives (
+                id TEXT PRIMARY KEY,
+                role_name TEXT NOT NULL,
+                viewpoint TEXT NOT NULL,
+                arguments TEXT DEFAULT '[]',
+                concerns TEXT DEFAULT '[]',
+                suggestions TEXT DEFAULT '[]',
+                confidence_level REAL DEFAULT 0.0,
+                repository_context TEXT,
+                created_at TEXT NOT NULL,
+                metadata TEXT DEFAULT '{}'
+            )
+        """
+        )
+
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS discussion_threads (
+                id TEXT PRIMARY KEY,
+                conversation_id TEXT NOT NULL,
+                topic TEXT NOT NULL,
+                parent_thread_id TEXT,
+                consensus_level REAL DEFAULT 0.0,
+                status TEXT NOT NULL CHECK (status IN ('active', 'resolved', 'blocked', 'needs_human_input')),
+                resolution TEXT,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                metadata TEXT DEFAULT '{}',
+
+                FOREIGN KEY (conversation_id) REFERENCES conversations (id) ON DELETE CASCADE,
+                FOREIGN KEY (parent_thread_id) REFERENCES discussion_threads (id) ON DELETE CASCADE
+            )
+        """
+        )
+
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS thread_perspectives (
+                thread_id TEXT NOT NULL,
+                perspective_id TEXT NOT NULL,
+                PRIMARY KEY (thread_id, perspective_id),
+
+                FOREIGN KEY (thread_id) REFERENCES discussion_threads (id) ON DELETE CASCADE,
+                FOREIGN KEY (perspective_id) REFERENCES role_perspectives (id) ON DELETE CASCADE
+            )
+        """
+        )
+
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS discussion_summaries (
+                id TEXT PRIMARY KEY,
+                conversation_id TEXT NOT NULL,
+                discussion_topic TEXT NOT NULL,
+                participating_roles TEXT DEFAULT '[]',
+                key_points TEXT DEFAULT '[]',
+                areas_of_agreement TEXT DEFAULT '[]',
+                areas_of_disagreement TEXT DEFAULT '[]',
+                recommended_actions TEXT DEFAULT '[]',
+                unresolved_issues TEXT DEFAULT '[]',
+                overall_consensus REAL DEFAULT 0.0,
+                confidence_score REAL DEFAULT 0.0,
+                requires_human_input BOOLEAN DEFAULT FALSE,
+                created_at TEXT NOT NULL,
+                metadata TEXT DEFAULT '{}',
+
+                FOREIGN KEY (conversation_id) REFERENCES conversations (id) ON DELETE CASCADE
+            )
+        """
+        )
+
+        # Create indexes for discussion tables
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_role_perspectives_role_name ON role_perspectives (role_name)"
+        )
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_role_perspectives_created_at ON role_perspectives (created_at)"
+        )
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_discussion_threads_conversation_id ON discussion_threads (conversation_id)"
+        )
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_discussion_threads_status ON discussion_threads (status)"
+        )
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_discussion_threads_created_at ON discussion_threads (created_at)"
+        )
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_discussion_summaries_conversation_id ON discussion_summaries (conversation_id)"
+        )
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_discussion_summaries_created_at ON discussion_summaries (created_at)"
         )
 
     def save_story(self, story: Union[Epic, UserStory, SubStory]) -> str:
@@ -1908,6 +2011,209 @@ class DatabaseManager:
             )
             return cursor.rowcount
 
+    def save_discussion_thread(self, thread: "DiscussionThread") -> str:
+        """Save a discussion thread to the database."""
+        from models import DiscussionThread, RolePerspective
+
+        with self.get_connection() as conn:
+            # Save thread data
+            thread_data = thread.to_dict()
+
+            thread_columns = ", ".join(thread_data.keys())
+            thread_placeholders = ", ".join(["?" for _ in thread_data])
+
+            conn.execute(
+                f"INSERT OR REPLACE INTO discussion_threads ({thread_columns}) VALUES ({thread_placeholders})",
+                list(thread_data.values()),
+            )
+
+            # Save perspectives
+            for perspective in thread.perspectives:
+                perspective_data = perspective.to_dict()
+
+                perspective_columns = ", ".join(perspective_data.keys())
+                perspective_placeholders = ", ".join(["?" for _ in perspective_data])
+
+                conn.execute(
+                    f"INSERT OR REPLACE INTO role_perspectives ({perspective_columns}) VALUES ({perspective_placeholders})",
+                    list(perspective_data.values()),
+                )
+
+                # Link perspective to thread
+                conn.execute(
+                    "INSERT OR REPLACE INTO thread_perspectives (thread_id, perspective_id) VALUES (?, ?)",
+                    (thread.id, perspective.id),
+                )
+
+            return thread.id
+
+    def get_discussion_thread(self, thread_id: str) -> Optional["DiscussionThread"]:
+        """Retrieve a discussion thread by ID with all perspectives."""
+        from models import DiscussionThread, RolePerspective
+
+        with self.get_connection() as conn:
+            # Get thread
+            cursor = conn.execute(
+                "SELECT * FROM discussion_threads WHERE id = ?", (thread_id,)
+            )
+            thread_row = cursor.fetchone()
+
+            if not thread_row:
+                return None
+
+            # Get perspectives
+            cursor = conn.execute(
+                """
+                SELECT rp.* FROM role_perspectives rp
+                JOIN thread_perspectives tp ON rp.id = tp.perspective_id
+                WHERE tp.thread_id = ?
+                ORDER BY rp.created_at
+                """,
+                (thread_id,),
+            )
+
+            perspectives = []
+            for row in cursor.fetchall():
+                perspective = RolePerspective(
+                    id=row["id"],
+                    role_name=row["role_name"],
+                    viewpoint=row["viewpoint"],
+                    arguments=json.loads(row["arguments"] or "[]"),
+                    concerns=json.loads(row["concerns"] or "[]"),
+                    suggestions=json.loads(row["suggestions"] or "[]"),
+                    confidence_level=row["confidence_level"],
+                    repository_context=row["repository_context"],
+                    created_at=datetime.fromisoformat(row["created_at"]),
+                    metadata=json.loads(row["metadata"] or "{}"),
+                )
+                perspectives.append(perspective)
+
+            # Create thread object
+            thread = DiscussionThread(
+                id=thread_row["id"],
+                conversation_id=thread_row["conversation_id"],
+                topic=thread_row["topic"],
+                parent_thread_id=thread_row["parent_thread_id"],
+                perspectives=perspectives,
+                consensus_level=thread_row["consensus_level"],
+                status=thread_row["status"],
+                resolution=thread_row["resolution"],
+                created_at=datetime.fromisoformat(thread_row["created_at"]),
+                updated_at=datetime.fromisoformat(thread_row["updated_at"]),
+                metadata=json.loads(thread_row["metadata"] or "{}"),
+            )
+
+            return thread
+
+    def save_discussion_summary(self, summary: "DiscussionSummary") -> str:
+        """Save a discussion summary to the database."""
+        with self.get_connection() as conn:
+            summary_data = summary.to_dict()
+
+            summary_columns = ", ".join(summary_data.keys())
+            summary_placeholders = ", ".join(["?" for _ in summary_data])
+
+            conn.execute(
+                f"INSERT OR REPLACE INTO discussion_summaries ({summary_columns}) VALUES ({summary_placeholders})",
+                list(summary_data.values()),
+            )
+
+            return summary.id
+
+    def get_discussion_summary(
+        self, conversation_id: str
+    ) -> Optional["DiscussionSummary"]:
+        """Get the discussion summary for a conversation."""
+        from models import DiscussionSummary
+
+        with self.get_connection() as conn:
+            cursor = conn.execute(
+                "SELECT * FROM discussion_summaries WHERE conversation_id = ? ORDER BY created_at DESC LIMIT 1",
+                (conversation_id,),
+            )
+            row = cursor.fetchone()
+
+            if not row:
+                return None
+
+            return DiscussionSummary(
+                id=row["id"],
+                conversation_id=row["conversation_id"],
+                discussion_topic=row["discussion_topic"],
+                participating_roles=json.loads(row["participating_roles"] or "[]"),
+                key_points=json.loads(row["key_points"] or "[]"),
+                areas_of_agreement=json.loads(row["areas_of_agreement"] or "[]"),
+                areas_of_disagreement=json.loads(row["areas_of_disagreement"] or "[]"),
+                recommended_actions=json.loads(row["recommended_actions"] or "[]"),
+                unresolved_issues=json.loads(row["unresolved_issues"] or "[]"),
+                overall_consensus=row["overall_consensus"],
+                confidence_score=row["confidence_score"],
+                requires_human_input=bool(row["requires_human_input"]),
+                created_at=datetime.fromisoformat(row["created_at"]),
+                metadata=json.loads(row["metadata"] or "{}"),
+            )
+
+    def list_discussion_threads(
+        self, conversation_id: Optional[str] = None, status: Optional[str] = None
+    ) -> List["DiscussionThread"]:
+        """List discussion threads, optionally filtered by conversation or status."""
+        with self.get_connection() as conn:
+            query = "SELECT id FROM discussion_threads"
+            params = []
+            conditions = []
+
+            if conversation_id:
+                conditions.append("conversation_id = ?")
+                params.append(conversation_id)
+
+            if status:
+                conditions.append("status = ?")
+                params.append(status)
+
+            if conditions:
+                query += " WHERE " + " AND ".join(conditions)
+
+            query += " ORDER BY created_at DESC"
+
+            cursor = conn.execute(query, params)
+            thread_ids = [row[0] for row in cursor.fetchall()]
+
+            threads = []
+            for thread_id in thread_ids:
+                thread = self.get_discussion_thread(thread_id)
+                if thread:
+                    threads.append(thread)
+
+            return threads
+
+    def get_role_perspectives_by_role(self, role_name: str) -> List["RolePerspective"]:
+        """Get all perspectives from a specific role."""
+        from models import RolePerspective
+
+        with self.get_connection() as conn:
+            cursor = conn.execute(
+                "SELECT * FROM role_perspectives WHERE role_name = ? ORDER BY created_at DESC",
+                (role_name,),
+            )
+
+            perspectives = []
+            for row in cursor.fetchall():
+                perspective = RolePerspective(
+                    id=row["id"],
+                    role_name=row["role_name"],
+                    viewpoint=row["viewpoint"],
+                    arguments=json.loads(row["arguments"] or "[]"),
+                    concerns=json.loads(row["concerns"] or "[]"),
+                    suggestions=json.loads(row["suggestions"] or "[]"),
+                    confidence_level=row["confidence_level"],
+                    repository_context=row["repository_context"],
+                    created_at=datetime.fromisoformat(row["created_at"]),
+                    metadata=json.loads(row["metadata"] or "{}"),
+                )
+                perspectives.append(perspective)
+
+            return perspectives
+
 
 def run_migrations(db_path: str = "storyteller.db"):
     """Run database migrations to set up the schema."""
@@ -1935,6 +2241,10 @@ def run_migrations(db_path: str = "storyteller.db"):
             "escalation_records",
             "workflow_checkpoints",
             "recovery_states",
+            "role_perspectives",
+            "discussion_threads",
+            "thread_perspectives",
+            "discussion_summaries",
         ]
         missing_tables = [t for t in expected_tables if t not in tables]
 

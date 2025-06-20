@@ -563,6 +563,142 @@ class Conversation:
 
 
 @dataclass
+class RolePerspective:
+    """Represents a role's perspective on a discussion topic."""
+
+    id: str = field(default_factory=lambda: f"perspective_{uuid.uuid4().hex[:8]}")
+    role_name: str = ""
+    viewpoint: str = ""
+    arguments: List[str] = field(default_factory=list)
+    concerns: List[str] = field(default_factory=list)
+    suggestions: List[str] = field(default_factory=list)
+    confidence_level: float = 0.0  # 0.0 to 1.0
+    repository_context: Optional[str] = None
+    created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    metadata: Dict[str, Any] = field(default_factory=dict)
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert perspective to dictionary for database storage."""
+        return {
+            "id": self.id,
+            "role_name": self.role_name,
+            "viewpoint": self.viewpoint,
+            "arguments": json.dumps(self.arguments),
+            "concerns": json.dumps(self.concerns),
+            "suggestions": json.dumps(self.suggestions),
+            "confidence_level": self.confidence_level,
+            "repository_context": self.repository_context,
+            "created_at": self.created_at.isoformat(),
+            "metadata": json.dumps(self.metadata),
+        }
+
+
+@dataclass
+class DiscussionThread:
+    """Represents a threaded discussion with arguments and counter-arguments."""
+
+    id: str = field(default_factory=lambda: f"thread_{uuid.uuid4().hex[:8]}")
+    conversation_id: str = ""
+    topic: str = ""
+    parent_thread_id: Optional[str] = None  # For nested threads
+    perspectives: List[RolePerspective] = field(default_factory=list)
+    consensus_level: float = 0.0  # 0.0 (no consensus) to 1.0 (full consensus)
+    status: str = "active"  # active, resolved, blocked, needs_human_input
+    resolution: Optional[str] = None
+    created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    updated_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    metadata: Dict[str, Any] = field(default_factory=dict)
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert thread to dictionary for database storage."""
+        return {
+            "id": self.id,
+            "conversation_id": self.conversation_id,
+            "topic": self.topic,
+            "parent_thread_id": self.parent_thread_id,
+            "consensus_level": self.consensus_level,
+            "status": self.status,
+            "resolution": self.resolution,
+            "created_at": self.created_at.isoformat(),
+            "updated_at": self.updated_at.isoformat(),
+            "metadata": json.dumps(self.metadata),
+        }
+
+    def add_perspective(self, perspective: RolePerspective) -> None:
+        """Add a role perspective to this thread."""
+        self.perspectives.append(perspective)
+        self.updated_at = datetime.now(timezone.utc)
+
+    def calculate_consensus(self) -> float:
+        """Calculate consensus level based on role perspectives."""
+        if not self.perspectives:
+            return 0.0
+
+        # Simple consensus calculation based on agreement in viewpoints
+        # More sophisticated algorithms could be implemented
+        agreement_scores = []
+
+        for i, perspective1 in enumerate(self.perspectives):
+            for j, perspective2 in enumerate(self.perspectives[i + 1 :], i + 1):
+                # Calculate similarity between viewpoints (simplified)
+                if perspective1.viewpoint and perspective2.viewpoint:
+                    # Simple keyword overlap check
+                    words1 = set(perspective1.viewpoint.lower().split())
+                    words2 = set(perspective2.viewpoint.lower().split())
+                    if words1 and words2:
+                        overlap = len(words1.intersection(words2))
+                        total = len(words1.union(words2))
+                        similarity = overlap / total if total > 0 else 0.0
+                        agreement_scores.append(similarity)
+
+        if agreement_scores:
+            self.consensus_level = sum(agreement_scores) / len(agreement_scores)
+        else:
+            self.consensus_level = 0.0
+
+        return self.consensus_level
+
+
+@dataclass
+class DiscussionSummary:
+    """Summary of a multi-role discussion."""
+
+    id: str = field(default_factory=lambda: f"summary_{uuid.uuid4().hex[:8]}")
+    conversation_id: str = ""
+    discussion_topic: str = ""
+    participating_roles: List[str] = field(default_factory=list)
+    key_points: List[str] = field(default_factory=list)
+    areas_of_agreement: List[str] = field(default_factory=list)
+    areas_of_disagreement: List[str] = field(default_factory=list)
+    recommended_actions: List[str] = field(default_factory=list)
+    unresolved_issues: List[str] = field(default_factory=list)
+    overall_consensus: float = 0.0
+    confidence_score: float = 0.0
+    requires_human_input: bool = False
+    created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    metadata: Dict[str, Any] = field(default_factory=dict)
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert summary to dictionary for database storage."""
+        return {
+            "id": self.id,
+            "conversation_id": self.conversation_id,
+            "discussion_topic": self.discussion_topic,
+            "participating_roles": json.dumps(self.participating_roles),
+            "key_points": json.dumps(self.key_points),
+            "areas_of_agreement": json.dumps(self.areas_of_agreement),
+            "areas_of_disagreement": json.dumps(self.areas_of_disagreement),
+            "recommended_actions": json.dumps(self.recommended_actions),
+            "unresolved_issues": json.dumps(self.unresolved_issues),
+            "overall_consensus": self.overall_consensus,
+            "confidence_score": self.confidence_score,
+            "requires_human_input": self.requires_human_input,
+            "created_at": self.created_at.isoformat(),
+            "metadata": json.dumps(self.metadata),
+        }
+
+
+@dataclass
 class ProjectFieldValue:
     """Represents a custom field value in a GitHub Project."""
 

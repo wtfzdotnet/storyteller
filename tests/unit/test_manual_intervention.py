@@ -1,10 +1,14 @@
 """Tests for manual intervention system."""
 
 import asyncio
+import sys
 import tempfile
 import unittest
 from datetime import datetime, timezone
 from pathlib import Path
+
+# Add project root to path for imports
+sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 from src.storyteller.consensus_engine import ConsensusEngine
 from src.storyteller.conversation_manager import ConversationManager

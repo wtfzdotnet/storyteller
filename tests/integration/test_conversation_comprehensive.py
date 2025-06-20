@@ -2,15 +2,20 @@
 
 import asyncio
 import os
+import sys
 from datetime import datetime, timezone
+from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-from conversation_manager import ConversationManager
-from database import DatabaseManager
-from models import Conversation, ConversationParticipant, Message
+
+# Add project root to path for imports
+sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 from mcp_server import MCPRequest, MCPStoryServer
+from src.storyteller.conversation_manager import ConversationManager
+from src.storyteller.database import DatabaseManager
+from src.storyteller.models import Conversation, ConversationParticipant, Message
 
 # Set dummy environment for testing
 os.environ["GITHUB_TOKEN"] = "test_token"

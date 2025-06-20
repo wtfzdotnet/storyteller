@@ -2,7 +2,34 @@
 profile = "black"
 multi_line_output = 3
 line_length = 88
+skip_gitignore = true
+extend_skip_glob = ["venv/*", ".venv/*", "build/*", "dist/*"]
 
 [tool.black]
 line-length = 88
 target-version = ['py311']
+extend-exclude = '''
+/(
+  # directories
+  \.eggs
+  | \.git
+  | \.tox
+  | \.venv
+  | venv
+  | _build
+  | buck-out
+  | build
+  | dist
+)/
+'''
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py", "*_test.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = "-v --tb=short"
+filterwarnings = [
+    "ignore::DeprecationWarning",
+    "ignore::PendingDeprecationWarning",
+]

@@ -21,6 +21,14 @@ class StoryStatus(Enum):
     BLOCKED = "blocked"
 
 
+class ContributionType(Enum):
+    """Type of contribution made by a role."""
+
+    ACCEPTANCE_CRITERION = "acceptance_criterion"
+    TESTING_REQUIREMENT = "testing_requirement"
+    EFFORT_ESTIMATE = "effort_estimate"
+
+
 class StoryType(Enum):
     """Type enumeration for hierarchical story levels."""
 
@@ -60,6 +68,17 @@ class BaseStory:
     updated_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     metadata: Dict[str, Any] = field(default_factory=dict)
 
+    # Lists for role-specific contributions
+    # These might be populated from related tables in a real DB scenario
+    # For now, we can store them as JSON blobs or handle them in-memory
+    acceptance_criteria_contributions: List[Dict[str, Any]] = field(
+        default_factory=list
+    )
+    testing_requirements_contributions: List[Dict[str, Any]] = field(
+        default_factory=list
+    )
+    effort_estimates_contributions: List[Dict[str, Any]] = field(default_factory=list)
+
     def to_dict(self) -> Dict[str, Any]:
         """Convert story to dictionary for database storage."""
         return {
@@ -70,6 +89,15 @@ class BaseStory:
             "created_at": self.created_at.isoformat(),
             "updated_at": self.updated_at.isoformat(),
             "metadata": json.dumps(self.metadata),
+            "acceptance_criteria_contributions": json.dumps(
+                self.acceptance_criteria_contributions
+            ),
+            "testing_requirements_contributions": json.dumps(
+                self.testing_requirements_contributions
+            ),
+            "effort_estimates_contributions": json.dumps(
+                self.effort_estimates_contributions
+            ),
         }
 
 
@@ -98,6 +126,85 @@ class Epic(BaseStory):
         return base_dict
 
 
+# New dataclasses for role-specific contributions
+
+
+@dataclass
+class AcceptanceCriterionContribution:
+    """Represents a single acceptance criterion contribution from a role."""
+
+    id: str = field(default_factory=lambda: f"ac_contrib_{uuid.uuid4().hex[:8]}")
+    story_id: str = ""  # FK to UserStory or SubStory
+    role_name: str = ""
+    contribution_text: str = ""
+    rationale: Optional[str] = None
+    created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    metadata: Dict[str, Any] = field(default_factory=dict)
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "id": self.id,
+            "story_id": self.story_id,
+            "role_name": self.role_name,
+            "contribution_text": self.contribution_text,
+            "rationale": self.rationale,
+            "created_at": self.created_at.isoformat(),
+            "metadata": json.dumps(self.metadata),
+        }
+
+
+@dataclass
+class TestingRequirement:
+    """Represents a testing requirement specified by a role."""
+
+    id: str = field(default_factory=lambda: f"test_req_{uuid.uuid4().hex[:8]}")
+    story_id: str = ""  # FK to UserStory or SubStory
+    role_name: str = ""
+    requirement_text: str = ""
+    priority: Optional[int] = None  # Lower is higher
+    created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    metadata: Dict[str, Any] = field(default_factory=dict)
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "id": self.id,
+            "story_id": self.story_id,
+            "role_name": self.role_name,
+            "requirement_text": self.requirement_text,
+            "priority": self.priority,
+            "created_at": self.created_at.isoformat(),
+            "metadata": json.dumps(self.metadata),
+        }
+
+
+@dataclass
+class EffortEstimate:
+    """Represents an effort estimation from a technical role."""
+
+    id: str = field(default_factory=lambda: f"effort_est_{uuid.uuid4().hex[:8]}")
+    story_id: str = ""  # FK to UserStory or SubStory
+    role_name: str = ""
+    estimate_value: float = 0.0
+    estimate_unit: str = "points"  # e.g., "points", "hours", "days"
+    confidence: Optional[float] = None  # e.g., 0.0 to 1.0
+    notes: Optional[str] = None
+    created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    metadata: Dict[str, Any] = field(default_factory=dict)
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "id": self.id,
+            "story_id": self.story_id,
+            "role_name": self.role_name,
+            "estimate_value": self.estimate_value,
+            "estimate_unit": self.estimate_unit,
+            "confidence": self.confidence,
+            "notes": self.notes,
+            "created_at": self.created_at.isoformat(),
+            "metadata": json.dumps(self.metadata),
+        }
+
+
 @dataclass
 class UserStory(BaseStory):
     """User Story - middle level, belongs to an Epic."""
@@ -105,9 +212,14 @@ class UserStory(BaseStory):
     epic_id: str = ""
     user_persona: str = ""
     user_goal: str = ""
-    acceptance_criteria: List[str] = field(default_factory=list)
+    acceptance_criteria: List[str] = field(default_factory=list)  # Consolidated ACs
     target_repositories: List[str] = field(default_factory=list)
-    story_points: Optional[int] = None
+    story_points: Optional[int] = None  # Potentially a synthesized estimate
+
+    # Storing contributions directly in the UserStory model for now.
+    # In a relational DB, these would be separate tables with foreign keys.
+    # For JSON storage, embedding them can be simpler.
+    # We'll use the to_dict methods of the new classes.
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert user story to dictionary for database storage."""
@@ -1368,6 +1480,9 @@ class ConsensusResult:
     completed_at: Optional[datetime] = None
     iterations: int = 0
     max_iterations: int = 10
+    requirements_context: Optional[Dict[str, Any]] = (
+        None  # To store ACs, TestReqs, Efforts being voted on
+    )
     metadata: Dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> Dict[str, Any]:
@@ -1389,12 +1504,22 @@ class ConsensusResult:
             ),
             "iterations": self.iterations,
             "max_iterations": self.max_iterations,
+            "requirements_context": (
+                json.dumps(self.requirements_context)
+                if self.requirements_context
+                else None
+            ),
             "metadata": json.dumps(self.metadata),
         }
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "ConsensusResult":
         """Create from dictionary."""
+        requirements_context_str = data.get("requirements_context")
+        requirements_context_data = (
+            json.loads(requirements_context_str) if requirements_context_str else None
+        )
+
         return cls(
             id=data["id"],
             conversation_id=data["conversation_id"],
@@ -1424,7 +1549,8 @@ class ConsensusResult:
             ),
             iterations=data["iterations"],
             max_iterations=data["max_iterations"],
-            metadata=json.loads(data["metadata"]) if data["metadata"] else {},
+            requirements_context=requirements_context_data,
+            metadata=json.loads(data["metadata"]) if data.get("metadata") else {},
         )
 
     def add_vote(self, vote: RoleVote) -> None:

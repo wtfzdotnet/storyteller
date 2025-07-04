@@ -110,6 +110,11 @@ class DatabaseManager:
                 technical_requirements TEXT DEFAULT '[]',
                 dependencies TEXT DEFAULT '[]',
 
+                -- New fields for role-specific contributions (stored as JSON)
+                acceptance_criteria_contributions TEXT DEFAULT '[]',
+                testing_requirements_contributions TEXT DEFAULT '[]',
+                effort_estimates_contributions TEXT DEFAULT '[]',
+
                 FOREIGN KEY (parent_id) REFERENCES stories (id) ON DELETE CASCADE
             )
         """
@@ -1277,6 +1282,17 @@ class DatabaseManager:
         acceptance_criteria = json.loads(row["acceptance_criteria"] or "[]")
         target_repositories = json.loads(row["target_repositories"] or "[]")
 
+        # New contribution fields
+        acceptance_criteria_contributions = json.loads(
+            row["acceptance_criteria_contributions"] or "[]"
+        )
+        testing_requirements_contributions = json.loads(
+            row["testing_requirements_contributions"] or "[]"
+        )
+        effort_estimates_contributions = json.loads(
+            row["effort_estimates_contributions"] or "[]"
+        )
+
         # Common fields
         common_data = {
             "id": row["id"],
@@ -1286,6 +1302,9 @@ class DatabaseManager:
             "created_at": datetime.fromisoformat(row["created_at"]),
             "updated_at": datetime.fromisoformat(row["updated_at"]),
             "metadata": metadata,
+            "acceptance_criteria_contributions": acceptance_criteria_contributions,
+            "testing_requirements_contributions": testing_requirements_contributions,
+            "effort_estimates_contributions": effort_estimates_contributions,
         }
 
         if story_type == StoryType.EPIC:

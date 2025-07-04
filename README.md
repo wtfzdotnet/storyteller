@@ -113,23 +113,35 @@ For CSV and Excel files, each row represents a story (Epic, UserStory, or SubSto
 - `type`: Specifies the story type. Must be one of `epic`, `user_story`, or `sub_story`.
 - `title`: The title of the story.
 - `description`: A description of the story.
-- `id`: (Optional) A unique identifier for the story. If not provided, one will be generated.
+- `id`: (Optional) A unique identifier for the story. If not provided, one will be generated. This ID is used for `parent_id` linking.
 - `parent_id`: (Required for `user_story` and `sub_story`) The ID of the parent story.
     - For a `user_story`, this is the ID of its parent `epic`.
     - For a `sub_story`, this is the ID of its parent `user_story`.
 
-Additional columns can be included to map to other fields in the `Epic`, `UserStory`, and `SubStory` models, such as:
-- For Epics: `business_value`, `acceptance_criteria` (comma-separated if multiple), `target_repositories` (comma-separated), `estimated_duration_weeks`.
-- For UserStories: `user_persona`, `user_goal`, `acceptance_criteria` (comma-separated), `target_repositories` (comma-separated), `story_points`.
-- For SubStories: `department`, `technical_requirements` (comma-separated), `dependencies` (comma-separated, referring to other sub-story IDs), `target_repository`, `assignee`, `estimated_hours`.
+Additional columns can be included to map to other fields in the `Epic`, `UserStory`, and `SubStory` models.
 
-*Note: The parsing of comma-separated fields for lists and linking dependencies by ID in CSV/Excel will be fully fleshed out by the `_parse_row_to_story` and `_build_story_hierarchies` methods in `RoadmapImporter.py` which are currently placeholders.*
+**Example CSV (`roadmap.csv`):**
+```csv
+type,id,parent_id,title,description,business_value,user_persona,user_goal,story_points,department,target_repository,estimated_hours,acceptance_criteria,target_repositories
+epic,EP01,,Main Epic Title,"Description of the main epic.","Significant business impact.",,,,,,,,backend-repo;frontend-repo
+user_story,US01,EP01,User Story 1 for EP01,"As a user, I want to...",,End User,"Achieve something useful",5,,,,US AC1;US AC2,frontend-repo
+sub_story,SS01,US01,Sub-task for US01 - Frontend,"Implement the UI component.",,,,frontend,frontend-repo,8,React;TypeScript,
+sub_story,SS02,US01,Sub-task for US01 - Backend,"Develop the API endpoint.",,,,backend,backend-repo,12,,
+epic,EP02,,Another Epic,"Description for another epic.",Low,,,,,,,,
+```
+**Notes for CSV/Excel:**
+- For list-like fields (e.g., `acceptance_criteria`, `target_repositories`), use a semicolon (`;`) to separate multiple values within a single cell. The importer will need to be updated to split these strings into lists. The current placeholder implementation of `_parse_row_to_story` does not yet handle this.
+- Ensure `id` values are unique if specified, as they are used for `parent_id` linking.
+- The order of rows matters if `parent_id` refers to an `id` defined in a later row (though the current placeholder `_build_story_hierarchies` might not handle out-of-order definitions robustly yet). It's generally safer to define parents before children.
+- Empty cells for optional fields are acceptable.
+
+*The parsing of complex fields (like comma/semicolon-separated lists) and robust hierarchical linking from CSV/Excel relies on the full implementation of the `_parse_row_to_story` and `_build_story_hierarchies` methods in `RoadmapImporter.py`. These are currently basic placeholders.*
 
 ### JSON Format
 
-The JSON file should contain a list of epic objects. Each epic object can have a `user_stories` key with a list of user story objects, and each user story object can have a `sub_stories` key with a list of sub-story objects.
+The JSON file should contain a list of epic objects. Each epic object can have a `user_stories` key (containing a list of user story objects), and each user story object can have a `sub_stories` key (containing a list of sub-story objects).
 
-Example JSON structure:
+**Example JSON (`roadmap.json`):**
 ```json
 [
   {

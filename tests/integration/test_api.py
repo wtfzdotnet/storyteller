@@ -5,6 +5,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
+import pandas as pd  # Added import for pandas
 import requests
 from api import app
 from fastapi.testclient import TestClient
@@ -237,6 +238,194 @@ class TestEpicAPI(unittest.TestCase):
         response = self.client.get("/epics/nonexistent/hierarchy")
         self.assertEqual(response.status_code, 404)
 
+    # --- Roadmap Import API Tests ---
+
+    def _create_temp_file_for_upload(self, content: str, filename: str) -> Path:
+        """Helper to create a temporary file with content."""
+        # Use the same temp directory as the database for consistency, or a new one
+        temp_dir = Path(self.temp_file.name).parent
+        file_path = temp_dir / filename
+        with open(file_path, "w", encoding="utf-8") as f:
+            f.write(content)
+        return file_path
+
+    def test_import_roadmap_csv_success(self):
+        """Test successful roadmap import from CSV."""
+        csv_content = (
+            "type,id,parent_id,title,description\n"
+            "epic,E1,,Epic CSV,First epic from CSV\n"
+            "user_story,US1,E1,User Story CSV,First US for E1 from CSV"
+        )
+        csv_file_path = self._create_temp_file_for_upload(csv_content, "roadmap.csv")
+
+        with open(csv_file_path, "rb") as f:
+            response = self.client.post(
+                "/roadmap/import?file_format=csv",
+                files={"file": ("roadmap.csv", f, "text/csv")},
+            )
+
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertIn("Roadmap imported successfully", data["message"])
+        self.assertEqual(
+            data["epics_created"], 1
+        )  # This depends on the actual parsing logic of _parse_row and _build_hierarchies
+        self.assertEqual(data["user_stories_created"], 1)  # Same as above
+
+        # Cleanup temp file
+        csv_file_path.unlink(missing_ok=True)
+
+    def test_import_roadmap_json_success(self):
+        """Test successful roadmap import from JSON."""
+        json_content = json.dumps(
+            [
+                {
+                    "id": "EPJ1",
+                    "title": "Epic JSON",
+                    "description": "Epic from JSON",
+                    "user_stories": [
+                        {
+                            "id": "USJ1",
+                            "title": "User Story JSON",
+                            "description": "US for EPJ1 from JSON",
+                        }
+                    ],
+                }
+            ]
+        )
+        json_file_path = self._create_temp_file_for_upload(json_content, "roadmap.json")
+
+        with open(json_file_path, "rb") as f:
+            response = self.client.post(
+                "/roadmap/import?file_format=json",
+                files={"file": ("roadmap.json", f, "application/json")},
+            )
+
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertIn("Roadmap imported successfully", data["message"])
+        self.assertEqual(data["epics_created"], 1)
+        self.assertEqual(data["user_stories_created"], 1)
+
+        json_file_path.unlink(missing_ok=True)
+
+    def test_import_roadmap_excel_success(self):
+        """Test successful roadmap import from Excel."""
+        # Create a dummy Excel file using pandas
+        excel_data = pd.DataFrame(
+            [
+                {
+                    "type": "epic",
+                    "id": "EX1",
+                    "parent_id": None,
+                    "title": "Epic Excel",
+                    "description": "Epic from Excel",
+                },
+                {
+                    "type": "user_story",
+                    "id": "USX1",
+                    "parent_id": "EX1",
+                    "title": "User Story Excel",
+                    "description": "US for EX1 from Excel",
+                },
+            ]
+        )
+        excel_file_path = Path(self.temp_file.name).parent / "roadmap.xlsx"
+
+        with pd.ExcelWriter(str(excel_file_path), engine="openpyxl") as writer:
+            excel_data.to_excel(writer, index=False, sheet_name="Sheet1")
+
+        with open(excel_file_path, "rb") as f:
+            response = self.client.post(
+                "/roadmap/import?file_format=excel",
+                files={
+                    "file": (
+                        "roadmap.xlsx",
+                        f,
+                        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    )
+                },
+            )
+
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertIn("Roadmap imported successfully", data["message"])
+        # These counts depend on the full implementation of _parse_row_to_story and _build_story_hierarchies
+        self.assertEqual(data["epics_created"], 1)
+        self.assertEqual(data["user_stories_created"], 1)
+
+        excel_file_path.unlink(missing_ok=True)
+
+    def test_import_roadmap_preview_mode(self):
+        """Test roadmap import in preview mode."""
+        json_content = json.dumps(
+            [{"id": "EPP1", "title": "Epic Preview"}]
+        )  # Minimal valid JSON
+        json_file_path = self._create_temp_file_for_upload(json_content, "preview.json")
+
+        with open(json_file_path, "rb") as f:
+            response = self.client.post(
+                "/roadmap/import?file_format=json&preview=true",
+                files={"file": ("preview.json", f, "application/json")},
+            )
+
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertIn("Roadmap import preview generated successfully", data["message"])
+        self.assertIsNotNone(data["preview_data"])
+        self.assertEqual(
+            data["preview_data"]["epics_to_be_created"], 1
+        )  # Based on import_from_json logic
+
+        # Verify no epics were actually created in the DB
+        db_epics = self.story_manager.get_all_epics()
+        self.assertEqual(len(db_epics), 0)
+
+        json_file_path.unlink(missing_ok=True)
+
+    def test_import_roadmap_unsupported_format(self):
+        """Test roadmap import with an unsupported file format."""
+        txt_content = "This is not a valid roadmap format."
+        txt_file_path = self._create_temp_file_for_upload(txt_content, "roadmap.txt")
+
+        with open(txt_file_path, "rb") as f:
+            response = self.client.post(
+                "/roadmap/import?file_format=txt",
+                files={"file": ("roadmap.txt", f, "text/plain")},
+            )
+
+        self.assertEqual(
+            response.status_code, 400
+        )  # Expecting ValueError to be caught by API
+        data = response.json()
+        self.assertIn("Unsupported file format: txt", data["detail"])
+
+        txt_file_path.unlink(missing_ok=True)
+
+    def test_import_roadmap_file_parse_error(self):
+        """Test roadmap import with a file that causes a parsing error (e.g., malformed JSON)."""
+        malformed_json_content = "{'id': 'EPError', 'title': 'Malformed JSON"  # Missing closing brace and quotes
+        json_file_path = self._create_temp_file_for_upload(
+            malformed_json_content, "malformed.json"
+        )
+
+        with open(json_file_path, "rb") as f:
+            response = self.client.post(
+                "/roadmap/import?file_format=json",
+                files={"file": ("malformed.json", f, "application/json")},
+            )
+
+        self.assertEqual(
+            response.status_code, 400
+        )  # From JSONDecodeError in importer, caught by StoryManager
+        data = response.json()
+        self.assertIn(
+            "Failed to import roadmap", data["detail"]
+        )  # Generic message from StoryManager
+        self.assertIn("Error decoding JSON", data["detail"])  # Specific error part
+
+        json_file_path.unlink(missing_ok=True)
+
 
 if __name__ == "__main__":
     # Set minimal environment variables for testing
@@ -244,5 +433,14 @@ if __name__ == "__main__":
 
     os.environ["GITHUB_TOKEN"] = "test_token"
     os.environ["DEFAULT_LLM_PROVIDER"] = "github"
+
+    # Need openpyxl for Excel tests if pandas is used in main code
+    try:
+        import openpyxl
+    except ImportError:
+        print(
+            "WARNING: openpyxl not found, Excel import tests might be affected or main code might fail."
+        )
+        print("Install with: pip install openpyxl")
 
     unittest.main()

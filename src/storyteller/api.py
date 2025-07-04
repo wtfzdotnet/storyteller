@@ -2,9 +2,16 @@
 
 import logging
 from datetime import datetime
-from typing import List, Optional
+from typing import Any, Dict, List, Optional  # Added Dict, Any
 
-from fastapi import FastAPI, HTTPException, Query, Request
+from fastapi import (  # Added UploadFile, File
+    FastAPI,
+    File,
+    HTTPException,
+    Query,
+    Request,
+    UploadFile,
+)
 from models import Epic, StoryStatus
 from pydantic import BaseModel, Field
 
@@ -502,6 +509,98 @@ async def get_story_transitions(story_id: str, limit: int = Query(50, ge=1, le=5
         raise HTTPException(
             status_code=500, detail=f"Failed to get transitions: {str(e)}"
         )
+
+
+# Roadmap Import Endpoint
+class RoadmapImportResponse(BaseModel):
+    """Response model for roadmap import operation."""
+
+    message: str
+    epics_created: Optional[int] = None
+    user_stories_created: Optional[int] = None
+    sub_stories_created: Optional[int] = None
+    preview_data: Optional[Dict[str, Any]] = None
+
+
+@app.post("/roadmap/import", response_model=RoadmapImportResponse)
+async def import_roadmap_file(
+    file: UploadFile = File(...),
+    file_format: str = Query(
+        ..., description="Format of the roadmap file (csv, json, excel)"
+    ),
+    preview: bool = Query(
+        False, description="Set to true to preview import without saving"
+    ),
+):
+    """
+    Import a roadmap from a file (CSV, JSON, Excel).
+    """
+    sm = get_story_manager()
+
+    # Ensure temp file for processing
+    # FastAPI's UploadFile can be read directly or saved to a temporary file.
+    # For simplicity with libraries that expect file paths, we'll save it temporarily.
+
+    temp_file_path = None
+    try:
+        # Create a temporary file to store the uploaded content
+        # This is often necessary as some parsing libraries expect a file path.
+        import shutil
+        import tempfile
+
+        suffix = f".{file_format.lower()}"
+        with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
+            shutil.copyfileobj(file.file, tmp)
+            temp_file_path = tmp.name
+
+        logger.info(
+            f"Roadmap file '{file.filename}' (format: {file_format}, preview: {preview}) saved to temp path: {temp_file_path}"
+        )
+
+        result = await sm.import_roadmap(
+            file_path=temp_file_path, file_format=file_format, preview=preview
+        )
+
+        if preview:
+            return RoadmapImportResponse(
+                message="Roadmap import preview generated successfully.",
+                preview_data=result,  # result from story_manager already contains the preview structure
+            )
+        else:
+            return RoadmapImportResponse(
+                message=result.get("message", "Roadmap imported successfully."),
+                epics_created=result.get("epics_created"),
+                user_stories_created=result.get("user_stories_created"),
+                sub_stories_created=result.get("sub_stories_created"),
+            )
+
+    except (
+        ValueError
+    ) as ve:  # Catch specific error for unsupported format from StoryManager
+        logger.error(f"ValueError during roadmap import: {ve}")
+        raise HTTPException(status_code=400, detail=str(ve))
+    except HTTPException as http_exc:  # Re-raise HTTPExceptions from StoryManager
+        logger.error(f"HTTPException during import: {http_exc.detail}")
+        raise http_exc
+    except Exception as e:
+        logger.error(
+            f"Unexpected error during roadmap import of '{file.filename}': {e}",
+            exc_info=True,
+        )
+        raise HTTPException(
+            status_code=500, detail=f"Failed to import roadmap: {str(e)}"
+        )
+    finally:
+        if temp_file_path:
+            try:
+                import os
+
+                os.remove(temp_file_path)
+                logger.info(f"Temporary file {temp_file_path} removed.")
+            except Exception as e_rm:
+                logger.error(f"Error removing temporary file {temp_file_path}: {e_rm}")
+        if file:
+            await file.close()
 
 
 @app.get("/transitions")

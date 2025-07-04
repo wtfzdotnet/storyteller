@@ -9,6 +9,7 @@ from typing import Any, Dict, List, Optional
 
 from config import Config, get_config, load_role_files
 from database import DatabaseManager
+from fastapi import HTTPException  # Added for import_roadmap error handling
 from github_handler import GitHubHandler
 from llm_handler import LLMHandler
 from models import Epic, StoryHierarchy, StoryStatus, SubStory, UserStory
@@ -1417,3 +1418,131 @@ Story Points: {user_story.story_points}"""
 
         # Fall back to legacy processing queue
         return self.processor.get_story_status(story_id)
+
+    async def import_roadmap(
+        self, file_path: str, file_format: str, preview: bool = False
+    ) -> Dict[str, Any]:
+        """
+        Imports a roadmap from a file and creates story hierarchies.
+
+        Args:
+            file_path: Path to the roadmap file.
+            file_format: Format of the file ('csv', 'json', 'excel').
+            preview: If True, returns a summary without saving to DB.
+
+        Returns:
+            A dictionary summarizing the import operation.
+        """
+        from .roadmap_importer import RoadmapImporter  # Local import
+
+        importer = RoadmapImporter()
+        hierarchies: List[StoryHierarchy] = []
+        file_format_lower = file_format.lower()
+
+        try:
+            if file_format_lower == "csv":
+                hierarchies = importer.import_from_csv(file_path)
+            elif file_format_lower == "json":
+                hierarchies = importer.import_from_json(file_path)
+            elif file_format_lower == "excel":
+                hierarchies = importer.import_from_excel(file_path)
+            else:
+                raise ValueError(
+                    f"Unsupported file format: {file_format}. Supported formats: csv, json, excel."
+                )
+        except Exception as e:
+            logger.error(f"Error during roadmap import from {file_path}: {e}")
+            raise HTTPException(
+                status_code=400, detail=f"Failed to import roadmap: {str(e)}"
+            ) from e  # Re-raise as HTTPException for API layer
+
+        if preview:
+            # For preview, we can use the preview method of the importer if it's fully implemented
+            # or generate a summary from the parsed hierarchies.
+            # importer.preview_import(file_path, file_format_lower) # if preview is a dry run
+
+            # For now, let's build a summary from what was parsed:
+            summary = {
+                "file_path": file_path,
+                "file_format": file_format_lower,
+                "epics_to_be_created": 0,
+                "user_stories_to_be_created": 0,
+                "sub_stories_to_be_created": 0,
+                "status": "preview",
+                "details": [],
+            }
+            for hierarchy in hierarchies:
+                summary["epics_to_be_created"] += 1
+                summary["user_stories_to_be_created"] += len(hierarchy.user_stories)
+                for us_id in hierarchy.sub_stories:
+                    summary["sub_stories_to_be_created"] += len(
+                        hierarchy.sub_stories[us_id]
+                    )
+                summary["details"].append(
+                    {
+                        "epic_title": hierarchy.epic.title,
+                        "user_stories_count": len(hierarchy.user_stories),
+                        "sub_stories_count": sum(
+                            len(ss_list) for ss_list in hierarchy.sub_stories.values()
+                        ),
+                    }
+                )
+            return summary
+
+        # If not preview, save to database
+        created_counts = {"epics": 0, "user_stories": 0, "sub_stories": 0}
+        if not hierarchies:
+            logger.info(f"No story hierarchies found or parsed from {file_path}.")
+            return {
+                "message": "No stories found or parsed in the provided file.",
+                "epics_created": 0,
+                "user_stories_created": 0,
+                "sub_stories_created": 0,
+            }
+
+        for hierarchy in hierarchies:
+            try:
+                # Save Epic
+                self.database.save_story(hierarchy.epic)
+                created_counts["epics"] += 1
+                logger.info(f"Saved Epic: {hierarchy.epic.id} - {hierarchy.epic.title}")
+
+                # Save UserStories
+                for us in hierarchy.user_stories:
+                    us.epic_id = hierarchy.epic.id  # Ensure parent ID is set
+                    self.database.save_story(us)
+                    created_counts["user_stories"] += 1
+                    logger.info(
+                        f"Saved UserStory: {us.id} - {us.title} (Epic: {us.epic_id})"
+                    )
+
+                    # Save SubStories for this UserStory
+                    if us.id in hierarchy.sub_stories:
+                        for ss in hierarchy.sub_stories[us.id]:
+                            ss.user_story_id = us.id  # Ensure parent ID is set
+                            self.database.save_story(ss)
+                            created_counts["sub_stories"] += 1
+                            logger.info(
+                                f"Saved SubStory: {ss.id} - {ss.title} (UserStory: {ss.user_story_id})"
+                            )
+            except Exception as e:
+                logger.error(
+                    f"Error saving story hierarchy for epic {hierarchy.epic.title}: {e}"
+                )
+                # Decide on error handling: continue with others or stop?
+                # For now, log and continue.
+                # Could accumulate errors and return them.
+
+        logger.info(
+            f"Roadmap import completed for {file_path}. "
+            f"Created: {created_counts['epics']} epics, "
+            f"{created_counts['user_stories']} user stories, "
+            f"{created_counts['sub_stories']} sub-stories."
+        )
+
+        return {
+            "message": "Roadmap imported successfully.",
+            "epics_created": created_counts["epics"],
+            "user_stories_created": created_counts["user_stories"],
+            "sub_stories_created": created_counts["sub_stories"],
+        }

@@ -90,9 +90,128 @@ python main.py story create "Your story description"
 # Analyze a story
 python main.py story analyze "Your story description"
 
+# Import a roadmap
+python main.py story import-roadmap <path_to_file.csv> --format csv
+python main.py story import-roadmap <path_to_file.json> --format json
+python main.py story import-roadmap <path_to_file.xlsx> --format excel
+
+# Preview roadmap import
+python main.py story import-roadmap <path_to_file.csv> --format csv --preview
+
 # Start MCP server
 python main.py mcp start
 ```
+
+## Roadmap Import File Formats
+
+The roadmap import feature supports CSV, JSON, and Excel files.
+
+### CSV and Excel Format
+
+For CSV and Excel files, each row represents a story (Epic, UserStory, or SubStory). The following columns are expected (minimum):
+
+- `type`: Specifies the story type. Must be one of `epic`, `user_story`, or `sub_story`.
+- `title`: The title of the story.
+- `description`: A description of the story.
+- `id`: (Optional) A unique identifier for the story. If not provided, one will be generated. This ID is used for `parent_id` linking.
+- `parent_id`: (Required for `user_story` and `sub_story`) The ID of the parent story.
+    - For a `user_story`, this is the ID of its parent `epic`.
+    - For a `sub_story`, this is the ID of its parent `user_story`.
+
+Additional columns can be included to map to other fields in the `Epic`, `UserStory`, and `SubStory` models.
+
+**Example CSV (`roadmap.csv`):**
+```csv
+type,id,parent_id,title,description,business_value,user_persona,user_goal,story_points,department,target_repository,estimated_hours,acceptance_criteria,target_repositories
+epic,EP01,,Main Epic Title,"Description of the main epic.","Significant business impact.",,,,,,,,backend-repo;frontend-repo
+user_story,US01,EP01,User Story 1 for EP01,"As a user, I want to...",,End User,"Achieve something useful",5,,,,US AC1;US AC2,frontend-repo
+sub_story,SS01,US01,Sub-task for US01 - Frontend,"Implement the UI component.",,,,frontend,frontend-repo,8,React;TypeScript,
+sub_story,SS02,US01,Sub-task for US01 - Backend,"Develop the API endpoint.",,,,backend,backend-repo,12,,
+epic,EP02,,Another Epic,"Description for another epic.",Low,,,,,,,,
+```
+**Notes for CSV/Excel:**
+- For list-like fields (e.g., `acceptance_criteria`, `target_repositories`), use a semicolon (`;`) to separate multiple values within a single cell. The importer will need to be updated to split these strings into lists. The current placeholder implementation of `_parse_row_to_story` does not yet handle this.
+- Ensure `id` values are unique if specified, as they are used for `parent_id` linking.
+- The order of rows matters if `parent_id` refers to an `id` defined in a later row (though the current placeholder `_build_story_hierarchies` might not handle out-of-order definitions robustly yet). It's generally safer to define parents before children.
+- Empty cells for optional fields are acceptable.
+
+*The parsing of complex fields (like comma/semicolon-separated lists) and robust hierarchical linking from CSV/Excel relies on the full implementation of the `_parse_row_to_story` and `_build_story_hierarchies` methods in `RoadmapImporter.py`. These are currently basic placeholders.*
+
+### JSON Format
+
+The JSON file should contain a list of epic objects. Each epic object can have a `user_stories` key (containing a list of user story objects), and each user story object can have a `sub_stories` key (containing a list of sub-story objects).
+
+**Example JSON (`roadmap.json`):**
+```json
+[
+  {
+    "id": "EP01",
+    "title": "Main Epic Title",
+    "description": "Description of the main epic.",
+    "business_value": "Significant business impact.",
+    "acceptance_criteria": ["AC for Epic 1", "AC for Epic 2"],
+    "target_repositories": ["backend-repo", "frontend-repo"],
+    "estimated_duration_weeks": 4,
+    "user_stories": [
+      {
+        "id": "US01",
+        "title": "User Story 1 for EP01",
+        "description": "As a user, I want to...",
+        "user_persona": "End User",
+        "user_goal": "Achieve something useful",
+        "acceptance_criteria": ["US AC1", "US AC2"],
+        "target_repositories": ["frontend-repo"],
+        "story_points": 5,
+        "sub_stories": [
+          {
+            "id": "SS01",
+            "title": "Sub-task for US01 - Frontend",
+            "description": "Implement the UI component.",
+            "department": "frontend",
+            "technical_requirements": ["React", "TypeScript"],
+            "target_repository": "frontend-repo",
+            "estimated_hours": 8
+          },
+          {
+            "id": "SS02",
+            "title": "Sub-task for US01 - Backend",
+            "description": "Develop the API endpoint.",
+            "department": "backend",
+            "dependencies": ["SS01"],
+            "target_repository": "backend-repo",
+            "estimated_hours": 12
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "title": "Another Epic (ID will be auto-generated)",
+    "description": "Another epic without a pre-defined ID."
+  }
+]
+```
+All fields within each story object correspond to the attributes of the `Epic`, `UserStory`, and `SubStory` models. Optional fields can be omitted.
+
+## API Documentation
+
+The roadmap import functionality is also available via the API:
+
+- **POST /roadmap/import**
+    - Imports a roadmap from an uploaded file.
+    - **Query Parameters**:
+        - `file_format: str` (required) - The format of the file (`csv`, `json`, `excel`).
+        - `preview: bool` (optional, default: `false`) - If `true`, previews the import without saving.
+    - **Request Body**: The file to import (multipart/form-data).
+    - **Responses**:
+        - `200 OK`: Successful import or preview.
+            - For import: `{ "message": "Roadmap imported successfully.", "epics_created": X, "user_stories_created": Y, "sub_stories_created": Z }`
+            - For preview: `{ "message": "Roadmap import preview generated successfully.", "preview_data": { ... } }`
+        - `400 Bad Request`: Invalid file format, parsing error, or other issues with the request.
+        - `500 Internal Server Error`: Unexpected server error.
+
+Refer to the API server's auto-generated documentation (e.g., at `/docs` when the server is running) for more details.
+
 
 ## License
 

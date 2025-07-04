@@ -615,6 +615,114 @@ def process_assignment(
     asyncio.run(_process_assignment())
 
 
+@story_app.command("import-roadmap")
+def import_roadmap_cli(
+    file_path: Path = typer.Argument(
+        ...,
+        help="Path to the roadmap file (CSV, JSON, Excel)",
+        exists=True,
+        file_okay=True,
+        dir_okay=False,
+        readable=True,
+    ),
+    file_format: str = typer.Option(
+        ..., "--format", "-f", help="Format of the roadmap file (csv, json, excel)"
+    ),
+    preview: bool = typer.Option(
+        False,
+        "--preview",
+        "-p",
+        help="Preview the import without saving to the database",
+    ),
+    debug: bool = typer.Option(False, "--debug", help="Enable debug logging"),
+):
+    """Import a roadmap from a CSV, JSON, or Excel file."""
+    setup_logging(debug)
+
+    async def _import_roadmap():
+        try:
+            # Corrected import for StoryManager, should be from src.storyteller
+            from src.storyteller.story_manager import StoryManager
+
+            story_manager = StoryManager()  # Initialize StoryManager
+
+            console.print(
+                f"[cyan]Importing roadmap from '{file_path}' (format: {file_format}, preview: {preview})...[/cyan]"
+            )
+
+            with Progress(
+                SpinnerColumn(),
+                TextColumn("[progress.description]{task.description}"),
+                console=console,
+            ) as progress_bar:  # Renamed to avoid conflict with typer.Progress
+                task = progress_bar.add_task("Processing roadmap file...", total=None)
+
+                result = await story_manager.import_roadmap(
+                    file_path=str(file_path),  # Convert Path to str
+                    file_format=file_format,
+                    preview=preview,
+                )
+                progress_bar.update(task, completed=True)
+
+            if preview:
+                console.print("\n[bold green]Roadmap Import Preview:[/bold green]")
+                console.print(f"File: {result.get('file_path')}")
+                console.print(f"Format: {result.get('file_format')}")
+                console.print(f"Status: {result.get('status')}")
+
+                table = Table(title="Import Summary (Preview)")
+                table.add_column("Item Type", style="cyan")
+                table.add_column("Count", style="magenta")
+                table.add_row(
+                    "Epics to be created", str(result.get("epics_to_be_created", 0))
+                )
+                table.add_row(
+                    "User Stories to be created",
+                    str(result.get("user_stories_to_be_created", 0)),
+                )
+                table.add_row(
+                    "Sub-Stories to be created",
+                    str(result.get("sub_stories_to_be_created", 0)),
+                )
+                console.print(table)
+
+                if result.get("details"):
+                    console.print("\n[bold]Preview Details:[/bold]")
+                    for item in result.get("details", []):
+                        console.print(
+                            f"  - Epic '{item['epic_title']}': {item['user_stories_count']} User Stories, {item['sub_stories_count']} Sub-Stories"
+                        )
+            else:
+                console.print(f"\n[bold green]Roadmap Import Complete:[/bold green]")
+                console.print(f"Message: {result.get('message')}")
+
+                table = Table(title="Import Results")
+                table.add_column("Item Type", style="cyan")
+                table.add_column("Count Created", style="magenta")
+                table.add_row("Epics", str(result.get("epics_created", 0)))
+                table.add_row(
+                    "User Stories", str(result.get("user_stories_created", 0))
+                )
+                table.add_row("Sub-Stories", str(result.get("sub_stories_created", 0)))
+                console.print(table)
+
+        except FileNotFoundError:
+            console.print(f"[red]✗ Error: File not found at '{file_path}'[/red]")
+            sys.exit(1)
+        except ValueError as ve:  # Catch specific errors like unsupported format
+            console.print(f"[red]✗ Error: {ve}[/red]")
+            sys.exit(1)
+        except Exception as e:
+            console.print(
+                f"[red]✗ An unexpected error occurred during roadmap import:[/red] {e}"
+            )
+            if debug:
+                console.print_exception()
+            sys.exit(1)
+
+    asyncio.run(_import_roadmap())
+
+
 @story_app.command("assignment-queue")
 def show_assignment_queue(
     limit: int = typer.Option(

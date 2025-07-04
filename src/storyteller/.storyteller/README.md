@@ -248,11 +248,19 @@ Our AI-powered development process leverages a comprehensive team of specialized
 
 ### Story Development Process
 
-1. **Initial Analysis**: Multiple expert roles analyze new stories from their perspectives
-2. **Iterative Feedback**: Experts provide domain-specific feedback and refinements
-3. **Consensus Building**: Agreement checking across relevant expert perspectives
-4. **Finalization**: Comprehensive story analysis with multi-perspective insights
-5. **User Approval**: Final validation before development begins
+1. **Initial Analysis**: Multiple expert roles analyze new stories from their perspectives.
+2. **Role-Based Requirement Gathering**:
+    *   Key roles such as Product Owner, QA Engineer, and Lead Developer are automatically prompted to provide specific inputs based on role-specific templates (located in `.storyteller/templates/roles/`).
+    *   **Product Owner**: Contributes detailed acceptance criteria.
+    *   **QA Engineer**: Specifies testing requirements and reviews ACs for testability.
+    *   **Lead Developer**: Provides effort estimations, technical feasibility feedback on ACs, and insights on testing requirements.
+    *   These contributions are collected and associated with the story.
+3. **Acceptance Criteria Synthesis**: Contributions for acceptance criteria from various roles are synthesized into a comprehensive list for the story.
+4. **Iterative Feedback & Consensus Building**:
+    *   The gathered requirements (synthesized ACs, testing requirements, effort estimates) are presented to relevant roles for review and consensus.
+    *   Experts provide feedback, and the system facilitates reaching an agreement using the Consensus Engine.
+5. **Finalization**: Once consensus is reached, the story has a comprehensive set of requirements, including validated acceptance criteria, detailed testing requirements, and agreed-upon effort estimates.
+6. **User Approval**: Final validation before development begins.
 
 ### Role Selection Strategy
 

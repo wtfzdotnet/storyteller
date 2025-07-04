@@ -607,3 +607,97 @@ class TestConsensusResult:
         assert restored.conversation_id == consensus.conversation_id
         assert restored.status == consensus.status
         assert restored.threshold == consensus.threshold
+
+    def test_create_consensus_with_requirements_context(self):
+        """Test creating consensus with requirements_context and report generation."""
+        req_context = {
+            "acceptance_criteria_contributions": [{"text": "AC1"}],
+            "testing_requirements_contributions": [{"text": "TR1"}],
+            "effort_estimates_contributions": [{"value": 5}],
+        }
+
+        consensus_process = self.engine.create_consensus_process(
+            conversation_id="conv_req_test_123",
+            decision_topic="Reviewing Story Requirements for Story X",
+            requirements_context=req_context,
+        )
+
+        assert consensus_process.requirements_context is not None
+        assert (
+            consensus_process.requirements_context["acceptance_criteria_contributions"][
+                0
+            ]["text"]
+            == "AC1"
+        )
+        assert (
+            len(
+                consensus_process.requirements_context[
+                    "testing_requirements_contributions"
+                ]
+            )
+            == 1
+        )
+        assert (
+            len(
+                consensus_process.requirements_context["effort_estimates_contributions"]
+            )
+            == 1
+        )
+
+        report = self.engine.generate_consensus_report(consensus_process)
+        assert "requirements_context_summary" in report
+        assert report["requirements_context_summary"]["has_context"] is True
+        assert report["requirements_context_summary"]["num_ac_contributions"] == 1
+        assert report["requirements_context_summary"]["num_testing_requirements"] == 1
+        assert report["requirements_context_summary"]["num_effort_estimates"] == 1
+
+        # Test with empty requirements_context
+        consensus_empty_req = self.engine.create_consensus_process(
+            conversation_id="conv_empty_req",
+            decision_topic="Topic with no reqs",
+            # requirements_context is None by default
+        )
+        assert consensus_empty_req.requirements_context is None
+        report_empty = self.engine.generate_consensus_report(consensus_empty_req)
+        assert (
+            "requirements_context_summary" in report_empty
+        )  # The key should still exist
+        assert report_empty["requirements_context_summary"]["has_context"] is False
+        # Check that counts are zero when context is None or empty
+        assert report_empty["requirements_context_summary"]["num_ac_contributions"] == 0
+        assert (
+            report_empty["requirements_context_summary"]["num_testing_requirements"]
+            == 0
+        )
+        assert report_empty["requirements_context_summary"]["num_effort_estimates"] == 0
+
+        # Test with requirements_context present but empty lists
+        empty_lists_req_context = {
+            "acceptance_criteria_contributions": [],
+            "testing_requirements_contributions": [],
+            "effort_estimates_contributions": [],
+        }
+        consensus_empty_lists = self.engine.create_consensus_process(
+            conversation_id="conv_empty_lists_req",
+            decision_topic="Topic with empty lists in reqs",
+            requirements_context=empty_lists_req_context,
+        )
+        assert consensus_empty_lists.requirements_context is not None
+        report_empty_lists = self.engine.generate_consensus_report(
+            consensus_empty_lists
+        )
+        assert report_empty_lists["requirements_context_summary"]["has_context"] is True
+        assert (
+            report_empty_lists["requirements_context_summary"]["num_ac_contributions"]
+            == 0
+        )
+        assert (
+            report_empty_lists["requirements_context_summary"][
+                "num_testing_requirements"
+            ]
+            == 0
+        )
+        assert (
+            report_empty_lists["requirements_context_summary"]["num_effort_estimates"]
+            == 0
+        )

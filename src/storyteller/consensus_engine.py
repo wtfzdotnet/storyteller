@@ -67,6 +67,7 @@ class ConsensusEngine:
         required_roles: Optional[List[str]] = None,
         threshold: Optional[float] = None,
         max_iterations: Optional[int] = None,
+        requirements_context: Optional[Dict[str, Any]] = None,  # New parameter
     ) -> ConsensusResult:
         """Create a new consensus process."""
 
@@ -77,10 +78,11 @@ class ConsensusEngine:
 
         consensus = ConsensusResult(
             conversation_id=conversation_id,
-            decision=decision_topic,
+            decision=decision_topic,  # This might be "Consensus on Story Requirements for XYZ"
             threshold=consensus_threshold,
             required_roles=required_roles or [],
             max_iterations=max_iter,
+            requirements_context=requirements_context,  # Store the requirements
         )
 
         logger.info(
@@ -360,6 +362,40 @@ class ConsensusEngine:
                     else None
                 ),
             },
+            "requirements_context_summary": (
+                {
+                    "has_context": consensus.requirements_context is not None,
+                    "num_ac_contributions": (
+                        len(
+                            consensus.requirements_context.get(
+                                "acceptance_criteria_contributions", []
+                            )
+                        )
+                        if consensus.requirements_context
+                        else 0
+                    ),
+                    "num_testing_requirements": (
+                        len(
+                            consensus.requirements_context.get(
+                                "testing_requirements_contributions", []
+                            )
+                        )
+                        if consensus.requirements_context
+                        else 0
+                    ),
+                    "num_effort_estimates": (
+                        len(
+                            consensus.requirements_context.get(
+                                "effort_estimates_contributions", []
+                            )
+                        )
+                        if consensus.requirements_context
+                        else 0
+                    ),
+                }
+                if consensus.requirements_context
+                else {"has_context": False}
+            ),
         }
 
         logger.info(f"Generated consensus report for {consensus.id}")
